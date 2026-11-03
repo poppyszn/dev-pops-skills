@@ -27,7 +27,7 @@ for kind in ec2 ecs static-site; do
   for tfvars in "$assets/environments/$kind/tfvars/"*.tfvars; do
     env="$(basename "$tfvars" .tfvars)"
     mkdir -p "$proj/environments/$env"
-    cp "$assets/environments/$kind/shared/"*.tf "$proj/environments/$env/"
+    cp "$assets/environments/common/providers.tf" "$assets/environments/$kind/shared/"*.tf "$proj/environments/$env/"
     cp "$tfvars" "$proj/environments/$env/terraform.tfvars"
   done
 

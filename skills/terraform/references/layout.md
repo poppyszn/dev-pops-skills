@@ -16,7 +16,7 @@ terraform/
     └── development/
         ├── providers.tf   ┐
         ├── main.tf        │ identical in every environment
-        ├── variables.tf   │ (assets/environments/<ec2|ecs>/shared/)
+        ├── variables.tf   │ (common/providers.tf + <kind>/shared/)
         ├── outputs.tf     │
         ├── backend.tf     ┘ (from backend.tf.example, once the state bucket exists)
         ├── terraform.tfvars   ← the only per-environment code: values (assets/environments/<kind>/tfvars/<env>.tfvars)
@@ -63,7 +63,7 @@ If the user wants separate AWS accounts per environment, the code does not chang
 
 ## Adding an environment or a resource
 
-- **New environment:** copy the `shared/` files from an existing environment folder, write its `terraform.tfvars` and `backend.hcl`, run `make init ENV=<name>` and `make check`. The parity script discovers it automatically.
+- **New environment:** copy every `.tf` file and the `.terraform.lock.hcl` from an existing environment folder, write its `terraform.tfvars` and `backend.hcl`, run `make init ENV=<name>` and `make check`. The parity script discovers it automatically.
 - **New resource or module:** edit `main.tf`, `variables.tf` and `outputs.tf` the same way in every environment, add the values to every `terraform.tfvars`, then `make parity`. Procedure for the module itself: `references/module-standard.md`.
 - **An EC2 instance and a static site (S3 + CloudFront) in one project:** start from the `ec2` kind and add the static-site blocks; the exact steps are in `references/static-site.md`. The two kinds use disjoint names so they compose.
 - **Both an EC2 instance and an ECS service in one project:** extend the one root. Add the missing module blocks and variables to all three environments identically. Do not create a second root that forks the module copies.
@@ -71,4 +71,4 @@ If the user wants separate AWS accounts per environment, the code does not chang
 
 ## Makefile
 
-`make help` lists the targets. `make check` is the gate (format, validate, parity) and needs no credentials. `make plan ENV=<name>` and `make apply ENV=<name>` need credentials; `apply` is a confirmation (see SKILL.md). `make lock ENV=<name>` writes lock-file hashes for linux, macOS and windows so CI on any of them can `init`. `make` was not available when the Makefile was written, so its `help` output is unverified: if `make help` fails in a new project, report it and fix the Makefile.
+`make help` lists the targets. `make check` is the gate (format, validate, parity) and needs no credentials. `make plan ENV=<name>` and `make apply ENV=<name>` need credentials; `apply` is a confirmation (see SKILL.md). `make lock` writes lock-file hashes for linux, macOS and windows so CI on any of them can `init`, and copies the file to every environment. The provider is downloaded once into a shared plugin cache, not once per environment (`references/state-and-backend.md`).

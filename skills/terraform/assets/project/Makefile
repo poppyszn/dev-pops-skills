@@ -6,6 +6,12 @@ ENV_DIR = environments/$(ENV)
 ENVIRONMENTS = $(notdir $(patsubst %/,%,$(wildcard environments/*/)))
 PLATFORMS = -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=darwin_amd64 -platform=windows_amd64
 
+# Download each provider once, not once per environment. Terraform uses a cached
+# package only when it matches a checksum in the lock file, and it will not
+# create the directory itself. Set TF_PLUGIN_CACHE_DIR yourself to use another path.
+export TF_PLUGIN_CACHE_DIR ?= $(HOME)/.terraform.d/plugin-cache
+$(shell mkdir -p "$(TF_PLUGIN_CACHE_DIR)")
+
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / { printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
@@ -44,5 +50,9 @@ plan: init ## Show what applying ENV would change
 apply: init ## Apply ENV after reviewing the plan (asks for confirmation)
 	terraform -chdir=$(ENV_DIR) apply -var-file=terraform.tfvars
 
-lock: ## Re-write ENV's lock file with hashes for all common platforms
+lock: ## Re-write the lock file (hashes for all common platforms) and copy it to every environment
 	terraform -chdir=$(ENV_DIR) providers lock $(PLATFORMS)
+	@for e in $(ENVIRONMENTS); do \
+		[ "$$e" = "$(ENV)" ] || cp $(ENV_DIR)/.terraform.lock.hcl environments/$$e/.terraform.lock.hcl; \
+	done
+	@echo "lock file copied from $(ENV) to: $(filter-out $(ENV),$(ENVIRONMENTS))"

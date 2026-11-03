@@ -1,6 +1,6 @@
 # Static site: S3 + CloudFront for a single-page app
 
-Assets: `assets/modules/static_site`, `assets/modules/static_site_deploy_role`, `assets/environments/static-site/` (`shared/*.tf`, `tfvars/<env>.tfvars`).
+Assets: `assets/modules/static_site`, `assets/modules/static_site_deploy_role`, `assets/environments/static-site/` (`shared/*.tf`, `tfvars/<env>.tfvars`), plus `assets/environments/common/providers.tf`.
 
 Hosts a built single-page app (Vite, CRA and similar) from a private S3 bucket behind CloudFront, and creates the role a GitHub Actions workflow assumes to publish it without stored AWS keys. The workflow itself (build, `aws s3 sync`, invalidation) is in the `cicd` skill's production deploy template.
 
