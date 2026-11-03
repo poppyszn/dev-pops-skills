@@ -1,0 +1,1 @@
+{ "name": "@orders/api", "scripts": { "build": "nest build", "start:prod": "node dist/main.js" } }

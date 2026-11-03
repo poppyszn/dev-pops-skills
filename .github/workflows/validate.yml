@@ -90,11 +90,12 @@ jobs:
       - name: actionlint on this repo's workflows and every shipped template
         run: ./scripts/check-workflows.sh
 
-      # docs/demo/ holds recorded agent output (evidence, not templates), so
-      # both linters skip it. A deliberate exception is an inline
+      # docs/demo/ holds recorded agent output and evals/workspaces/ holds the
+      # eval's stand-in projects (some deliberately flawed); neither is a
+      # template, so both linters skip them. A deliberate exception is an inline
       # `# shellcheck disable=` / `# hadolint ignore=` with the reason next to it.
       - name: shellcheck
-        run: git ls-files -z '*.sh' ':!docs/demo/' | xargs -0 shellcheck --severity=warning
+        run: git ls-files -z '*.sh' ':!docs/demo/' ':!evals/workspaces/' | xargs -0 shellcheck --severity=warning
 
       # Fails on warnings and errors; "info" notes (e.g. consolidate RUN lines)
       # are printed but don't block.
@@ -105,7 +106,7 @@ jobs:
           while IFS= read -r -d '' f; do
             echo "== $f"
             docker run --rm -i hadolint/hadolint:v2.15.1 hadolint --failure-threshold warning - < "$f" || status=1
-          done < <(git ls-files -z '*Dockerfile*' ':!docs/demo/')
+          done < <(git ls-files -z '*Dockerfile*' ':!docs/demo/' ':!evals/workspaces/')
           exit "$status"
 
   secrets:
