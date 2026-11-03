@@ -2,7 +2,7 @@
 name: cicd
 description: Use when creating, modifying, or debugging CI/CD pipelines in GitHub Actions (.github/workflows/*.yml, .github/actions/*/action.yml), including lint/test/build CI for Node repos (single package, several independent apps, or Nx/npm-workspaces monorepos), building and pushing Docker images to GHCR, deploying a compose stack to a server over SSH (registry pull or build-on-server), running seed/migration jobs against a deployed environment, production deploys (web to S3 + CloudFront, servers to a Docker host over SSH, with preflight, migrate-then-restart and SHA-pinned rollback), and failing, slow, or flaky pipeline runs. Not for writing Dockerfiles or compose files (use docker), security scanning workflows, secrets, or token hardening (use security), or setting up a whole multi-app project at once (use project-infra).
 metadata:
-  version: "3.0.0"
+  version: "3.1.0"
   last-verified: "2026-11-01"
 ---
 
@@ -54,7 +54,7 @@ Apply these without asking. Deviate only if the project already does it differen
 4. **Check pins are current.** For each `uses: owner/repo@ref`, confirm the ref exists (`gh api repos/<owner>/<repo>/git/refs/tags/<ref>`) and the major isn't behind (`gh api repos/<owner>/<repo>/releases/latest`). For images, check the registry. Use the current version and file the stale template pin as a gap (step 7).
 5. **For an existing workflow (review/fix):** check it against the Defaults and `references/gotchas.md`. Classify each difference as deliberate, drift, or uncovered, and report the list before editing.
 6. **Verify** (see Verification).
-7. **File gaps, don't route around them:** write a finding to the skills repo's `contributions/` folder (two levels above this skill's real path; format in its `README.md`).
+7. **File gaps, don't route around them:** write a finding to the skills repo's `contributions/` folder (two levels above this skill's real path; format in its `README.md`). Leave out the client, project and repository names; describe the project's shape instead ("a single-app NestJS API").
 
 ## Requires confirmation
 

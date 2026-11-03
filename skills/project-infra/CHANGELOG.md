@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.0 - 2026-11-03
+
+- The "file gaps" step now says to leave out the client, project and repository names and describe the project's shape instead (standard §12 in skill-authoring).
+
 ## 3.0.0 - 2026-11-03
 
 - **Breaking: the example's develop deploy pins host keys**, following cicd 3.0.0. The vendored `git-sync-deploy` and `ssh-compose-deploy` actions are re-copied, and the example's `deploy-develop.yml` and `run-seed-develop.yml` pass or read the new `SSH_KNOWN_HOSTS` secret. A project scaffolded from 2.x needs that secret on its `develop` environment (the output of `ssh-keyscan -p <port> <host>`).

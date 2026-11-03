@@ -2,7 +2,7 @@
 name: project-infra
 description: Use when setting up the infrastructure for a whole project at once, meaning several pieces wired together (Dockerfiles for multiple apps, compose stacks, CI, image builds, and deploy pipelines in one repo, often an npm-workspaces monorepo), or when auditing a repo's existing infra files as a set against the templates. Phrases like "set up this project's Docker and CI/CD", "dockerize and deploy this monorepo", or "check our infra against the templates". Not for a single Dockerfile or compose change (use docker), a single workflow (use cicd), or security scanning alone (use security).
 metadata:
-  version: "3.0.0"
+  version: "3.1.0"
   last-verified: "2026-09-26"
 ---
 
@@ -95,7 +95,7 @@ Add these to the manifest's "needs the user", each of them a step only the user 
 
 ### Always
 
-8. **File gaps, don't route around them.** When a template doesn't fit or is wrong, write a finding to the skills repo's `contributions/` folder (format in its `README.md`) as well as fixing the project.
+8. **File gaps, don't route around them.** When a template doesn't fit or is wrong, write a finding to the skills repo's `contributions/` folder (format in its `README.md`) as well as fixing the project. Leave out the client, project and repository names; describe the project's shape instead ("a single-app NestJS API").
 
 ## Requires confirmation
 

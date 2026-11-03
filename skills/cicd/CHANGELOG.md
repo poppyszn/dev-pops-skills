@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.0 - 2026-11-03
+
+- The "file gaps" step now says to leave out the client, project and repository names and describe the project's shape instead (standard §12 in skill-authoring).
+
 ## 3.0.0 - 2026-11-03
 
 - **Breaking: the develop SSH path pins host keys.** `ssh-compose-deploy` and `git-sync-deploy` take a new required `ssh-known-hosts` input, `run-seed-develop.yml` reads a new `SSH_KNOWN_HOSTS` secret, and all three set `StrictHostKeyChecking yes` (they were `no`, documented as an accepted risk). An empty value fails the step. Existing callers must add the `SSH_KNOWN_HOSTS` secret (the output of `ssh-keyscan -p <port> <host>`, plus the jump host's line) and pass it; this is the same rule the production workflows already used, so the two paths no longer disagree.

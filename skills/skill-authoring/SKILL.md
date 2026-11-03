@@ -2,7 +2,7 @@
 name: skill-authoring
 description: Use when creating, editing, reviewing, splitting, renaming, or auditing an agent skill (a SKILL.md folder) or the structure of this skills repo, including when asked to "make a skill for X", "update the docker skill", "check the skills are up to date", "apply the contributions", or when the skill validator or the freshness-audit issue reports failures, drift, or stale skills. Not for carrying out the domain work a skill describes (use that skill, e.g. docker or cicd).
 metadata:
-  version: "0.4.0"
+  version: "0.5.0"
   last-verified: "2026-09-26"
 ---
 
@@ -47,7 +47,7 @@ Not for: doing Docker, CI/CD, scripting or security work (use those skills).
 
 ### Apply a finding
 
-1. Read the finding in `contributions/` (the repo root is two levels above this skill's real path). Reproduce its claim, or confirm it against the current asset. Check any external fact online.
+1. Read the finding in `contributions/` (the repo root is two levels above this skill's real path). If it names a client, project, repository or person, genericize it first (describe the project's shape; standard §12). Reproduce its claim, or confirm it against the current asset. Check any external fact online.
 2. Apply it as a normal edit (Create or edit, steps 4–9):
    - assets: copy-then-edit
    - update the asset's reference
@@ -80,6 +80,7 @@ Not for: doing Docker, CI/CD, scripting or security work (use those skills).
 - `references/sources.md` has no row older than the skill's `last-verified` date, unless the row is marked `unverified` and the user was told.
 - Every file in `references/`, `scripts/` and `assets/` is listed in the skill's References section (the validator warns otherwise).
 - Assets pass their syntax checks (standard §11), and vendored copies match their source (the validator fails otherwise).
+- `scripts/check-private-names.sh` (repo root) passes: no client, project or repository name and no home path anywhere, including findings and what was copied out of them.
 - If a portable copy exists for an agent with no Skill tool, `scripts/export-portable.sh --check <path-to-pasted-copy>` passes (standard §13).
 
 ## Examples

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-11-03
+
+- New rule, standard §12: **findings are anonymous**. A finding never names the client, project, repository, organisation, a person, a hostname, domain or local path; it describes the project's shape and keeps every technical detail. The same applies to anything copied from a finding into a skill, changelog, commit or PR. "Apply a finding" now starts by genericizing, and Verification runs `scripts/check-private-names.sh`.
+
 ## 0.4.0 - 2026-09-27
 
 - Standard §13: portable export for agents with no Skill tool (no on-demand loading), and the authoring convention (write for top-to-bottom reading, no runtime-mechanic-only phrasing, assets stay pointers) that keeps every skill flattenable without extra effort.

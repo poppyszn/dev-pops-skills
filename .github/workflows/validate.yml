@@ -41,6 +41,14 @@ jobs:
       - name: Internal links and referenced paths exist
         run: ./scripts/check-links.sh
 
+      # PRIVATE_NAMES is an optional repository secret (comma- or newline-
+      # separated). Without it only the built-in checks run. Hits are printed
+      # as file:line, never the matched name.
+      - name: No client or project names, no home paths
+        env:
+          PRIVATE_NAMES: ${{ secrets.PRIVATE_NAMES }}
+        run: ./scripts/check-private-names.sh
+
   assets:
     name: Asset syntax
     runs-on: ubuntu-latest

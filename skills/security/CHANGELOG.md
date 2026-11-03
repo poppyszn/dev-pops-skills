@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.0 - 2026-11-03
+
+- The "file gaps" step now says to leave out the client, project and repository names and describe the project's shape instead (standard §12 in skill-authoring).
+
 ## 2.1.0 - 2026-11-01
 
 - New defaults, from reviewing a hand-made production deployment: cloud credentials via OIDC federation with the trust policy pinned to one GitHub Environment (no stored keys, no `repo:<org>/<repo>:*`), and pinned SSH host keys with the deploy key's private half only in the environment secret. The cicd production templates and the terraform deploy-role modules implement both.
