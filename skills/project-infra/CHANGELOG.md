@@ -2,7 +2,7 @@
 
 ## 3.1.1 - 2026-11-03
 
-- The example's `apps/api` and `apps/admin` `HEALTHCHECK` lines carry the same `# hadolint ignore=DL3025` and reason as the docker templates they were adapted from.
+- The example's `apps/api`, `apps/admin` and `apps/web` `HEALTHCHECK` lines carry the same `# hadolint ignore=DL3025` and reason as the docker templates they were adapted from.
 
 ## 3.1.0 - 2026-11-03
 
