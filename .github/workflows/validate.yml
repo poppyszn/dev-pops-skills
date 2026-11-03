@@ -99,8 +99,13 @@ jobs:
       - name: hadolint on the Dockerfile templates (advisory)
         continue-on-error: true
         run: |
-          set -euo pipefail
-          git ls-files -z '*Dockerfile*' | xargs -0 -n1 sh -c 'docker run --rm -i hadolint/hadolint:v2.15.1 < "$0"'
+          set -uo pipefail
+          status=0
+          while IFS= read -r -d '' f; do
+            echo "== $f"
+            docker run --rm -i hadolint/hadolint:v2.15.1 < "$f" || status=1
+          done < <(git ls-files -z '*Dockerfile*')
+          exit "$status"
 
   secrets:
     name: Secret scan
