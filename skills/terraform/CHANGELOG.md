@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-11-03
+
+- **Providers download once per machine, not once per environment.** The project `Makefile` sets `TF_PLUGIN_CACHE_DIR` (default `~/.terraform.d/plugin-cache`, created if missing; an existing value wins). Terraform only uses a cached package that matches a lock-file checksum, so this stays safe with the committed lock files.
+- **`make lock` writes the lock file once and copies it to every environment.** The parity check already required identical lock files, so locking each environment separately meant three runs of five platform downloads, with a parity failure in between.
+- **Shared environment files are no longer duplicated per kind.** `providers.tf`, `backend.tf.example` and `backend.hcl.example` were byte-identical in `ec2`, `ecs` and `static-site`; they now live once in `assets/environments/common/`. The scaffold step copies `common/providers.tf` plus the kind's `shared/*.tf`; the scaffolded project is unchanged.
+- **Leaner to load:** a shorter description (880 to 665 characters) and `SKILL.md` tightened without dropping a rule. Removed a Verification line that was wrong: `grep 'zh:\|h1:'` on the lock files prints hashes, not versions, and the parity check already compares the lock files.
+- Checked: the `Makefile` run with GNU Make 3.81 and a stub `terraform` (`make help` renders; `make lock ENV=production` produces one identical lock file in all three environments and parity passes; the cache directory is created; a caller's `TF_PLUGIN_CACHE_DIR` is kept); `scripts/check-terraform-assets.sh` scaffolds all three kinds from the new layout and parity passes for each. `terraform validate` against the real provider runs in CI.
+
 ## 0.3.0 - 2026-11-03
 
 - The "file gaps" step now says to leave out the client, project and repository names and describe the project's shape instead (standard §12 in skill-authoring).

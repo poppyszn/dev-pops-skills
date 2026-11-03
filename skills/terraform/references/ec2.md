@@ -1,6 +1,6 @@
 # EC2 template
 
-Assets: `assets/modules/ec2`, `assets/modules/security_group`, `assets/environments/ec2/` (`shared/*.tf`, `tfvars/<env>.tfvars`).
+Assets: `assets/modules/ec2`, `assets/modules/security_group`, `assets/environments/ec2/` (`shared/*.tf`, `tfvars/<env>.tfvars`), plus `assets/environments/common/providers.tf`.
 
 One instance in the default VPC, with a security group. Copy the two modules and the environment files (see `references/layout.md`), then replace the markers in each `terraform.tfvars`: `<PROJECT>` (short, lowercase) and `<REGION>` (keep `eu-west-1` unless told otherwise).
 

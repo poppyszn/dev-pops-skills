@@ -1,5 +1,0 @@
-# Per-environment backend settings. Copy to backend.hcl in the environment folder.
-# One bucket for the project, one key per environment.
-bucket = "<STATE_BUCKET>"
-key    = "<PROJECT>/<ENVIRONMENT>/terraform.tfstate"
-region = "<REGION>"
