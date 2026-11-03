@@ -1,0 +1,116 @@
+# Matrix build-and-push (calls ./docker-build-push.yml once per app) then
+# deploy via ./.github/actions/ssh-compose-deploy, pointed at
+# docker/develop/compose.yml (pull-based — see that file's header
+# comment). This is the registry-pull deploy shape; see
+# deploy-develop-build-on-server.yml in the cicd skill's assets instead if
+# you don't want to stand up a registry.
+
+name: Deploy develop branch
+
+on:
+  push:
+    branches: [develop]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".github/**"
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Commit SHA to deploy (leave empty for latest on develop)"
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false # never cancel an in-flight deploy
+
+permissions:
+  contents: read # git-sync-deploy clones with the run's token
+  packages: read # ssh-compose-deploy pulls from GHCR
+
+jobs:
+  # Light pre-deploy gate: only what would break the app once deployed.
+  # Full lint/unit/e2e suites run on pull requests (ci.yml); this workflow
+  # never calls CI. Runs before any image is pushed, so latest-develop is
+  # never published for a broken commit.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # --if-present: a workspace without the script is skipped, not failed.
+      - run: npm run lint --workspaces --if-present
+
+      - run: npm run typecheck --workspaces --if-present
+
+  build-and-push:
+    needs: verify
+    strategy:
+      matrix:
+        app: [api, web, admin]
+    # A called workflow can't get more than its caller grants: this job
+    # must allow packages: write for docker-build-push to push.
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build-push.yml
+    with:
+      app: ${{ matrix.app }}
+      dockerfile: apps/${{ matrix.app }}/Dockerfile
+      image-tag: latest-develop
+      # Build the commit that was asked for, not just the one that triggered the run.
+      ref: ${{ inputs.commit_sha }}
+    secrets: inherit
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: develop
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # ssh-compose-deploy only pulls images and runs `docker compose up`
+      # against a working-dir that already has docker/develop/compose.yml
+      # on the host — it doesn't sync source itself. git-sync-deploy runs
+      # first to keep that file (and .env.example) current, the same way
+      # real pull-based deploys do (a repository-update step before the
+      # pull).
+      - name: Sync repo to server
+        uses: ./.github/actions/git-sync-deploy
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          ssh-known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          ssh-jump-host: ${{ secrets.SSH_JUMP_HOST }}
+          ssh-jump-user: ${{ secrets.SSH_USER_JUMP }}
+          ssh-host: ${{ secrets.SSH_HOST }}
+          ssh-user: ${{ secrets.SSH_USER }}
+          ssh-port: ${{ secrets.SSH_PORT || '22' }}
+          working-dir: ${{ secrets.WORKING_DIR }}
+          repo: ${{ github.repository }}
+          branch: ${{ github.ref_name }}
+          commit-sha: ${{ github.event.inputs.commit_sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          compose-dir: docker/develop
+
+      - name: Pull images and start stack
+        uses: ./.github/actions/ssh-compose-deploy
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          ssh-known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          ssh-jump-host: ${{ secrets.SSH_JUMP_HOST }}
+          ssh-jump-user: ${{ secrets.SSH_USER_JUMP }}
+          ssh-host: ${{ secrets.SSH_HOST }}
+          ssh-user: ${{ secrets.SSH_USER }}
+          ssh-port: ${{ secrets.SSH_PORT || '22' }}
+          working-dir: ${{ secrets.WORKING_DIR }}/${{ github.event.repository.name }}/docker/develop
+          github-token: ${{ secrets.GITHUB_TOKEN }}

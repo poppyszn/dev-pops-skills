@@ -1,0 +1,85 @@
+# Keeps Docker base images in the skill templates current. Action pins inside
+# skills/*/assets aren't visible to Dependabot (it only scans .github/workflows);
+# the weekly version-freshness-audit workflow covers those.
+#
+# Major bumps are ignored: moving a template to a new major (e.g. Node 26)
+# changes a skill default, so it goes through the skill-authoring flow as one
+# versioned change across all skills, not one PR per Dockerfile.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /skills/docker/assets/node-api
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore(docker/node-api)"
+
+  - package-ecosystem: docker
+    directory: /skills/docker/assets/frontend-spa-nginx
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # nginx odd minors (1.31) are the mainline branch; templates track stable (even).
+      - dependency-name: nginx
+        update-types: ["version-update:semver-minor"]
+    commit-message:
+      prefix: "chore(docker/frontend-spa-nginx)"
+
+  - package-ecosystem: docker
+    directory: /skills/docker/assets/frontend-nextjs
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore(docker/frontend-nextjs)"
+
+  - package-ecosystem: docker
+    directory: /skills/project-infra/assets/monorepo-layout/apps/api
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore(project-infra/monorepo-layout/apps/api)"
+
+  - package-ecosystem: docker
+    directory: /skills/project-infra/assets/monorepo-layout/apps/web
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore(project-infra/monorepo-layout/apps/web)"
+
+  - package-ecosystem: docker
+    directory: /skills/project-infra/assets/monorepo-layout/apps/admin
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # nginx odd minors (1.31) are the mainline branch; templates track stable (even).
+      - dependency-name: nginx
+        update-types: ["version-update:semver-minor"]
+    commit-message:
+      prefix: "chore(project-infra/monorepo-layout/apps/admin)"
+
+  # This repo's own workflows (the freshness audit).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore(ci)"

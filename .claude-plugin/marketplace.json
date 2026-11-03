@@ -1,0 +1,13 @@
+{
+  "name": "dev-pops",
+  "owner": {
+    "name": "Precious Okpor"
+  },
+  "plugins": [
+    {
+      "name": "dev-pops-skills",
+      "source": "./",
+      "description": "Focused DevOps skills: docker, cicd, security, scripting, terraform, project-infra, skill-authoring."
+    }
+  ]
+}

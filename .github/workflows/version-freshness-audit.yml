@@ -1,0 +1,72 @@
+# Operational tooling for THIS repo, not a template for other projects
+# (same category as .github/dependabot.yml). Weekly, it checks that:
+# - Docker Hub image tags pinned in skills/*/assets (Dockerfile FROM lines,
+#   compose image: lines, and `docker run` images in workflows) still resolve
+# - GitHub Actions pins in skills/*/assets exist and aren't behind the
+#   current major (Dependabot can't see these: it only scans .github/workflows)
+# - no skill is overdue for an online re-check (the skills validator's
+#   last-verified warning)
+# On drift it opens or updates one GitHub Issue instead of auto-fixing, so
+# changes still go through the skill-authoring flow and review.
+#
+# Only runs once this repo is on GitHub with Actions enabled.
+
+name: Version freshness audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Check image tags, action pins and skill freshness
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          ./scripts/freshness-audit.sh "$RUNNER_TEMP/drift-summary.md"
+          status=$?
+          if [ "$status" -eq 0 ]; then drift=0; elif [ "$status" -eq 3 ]; then drift=1; else exit "$status"; fi
+          echo "drift-found=$drift" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Version freshness audit"
+            if [ "$drift" = "1" ]; then cat "$RUNNER_TEMP/drift-summary.md"; else echo "No drift found."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update an issue on drift
+        if: steps.check.outputs.drift-found == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # --force creates the label, or updates it if it already exists;
+          # `gh issue create --label` fails on a missing label.
+          gh label create version-freshness --color FBCA04 \
+            --description "Stale or invalid version pins" --force
+          existing=$(gh issue list --label version-freshness --state open --json number --jq '.[0].number // empty')
+          {
+            echo "Automated weekly scan found stale or invalid pins, or skills overdue for re-verification."
+            echo ""
+            cat "$RUNNER_TEMP/drift-summary.md"
+            echo ""
+            echo "Ask an agent to \"audit the skills\" (skill-authoring skill): it re-checks online, then proposes versioned fixes for review."
+          } > "$RUNNER_TEMP/issue-body.md"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$RUNNER_TEMP/issue-body.md"
+          else
+            gh issue create \
+              --title "Version freshness audit: drift found ($(date -u +%Y-%m-%d))" \
+              --label version-freshness \
+              --body-file "$RUNNER_TEMP/issue-body.md"
+          fi

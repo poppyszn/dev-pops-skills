@@ -1,0 +1,175 @@
+# Vendored verbatim from the dev-pops cicd skill: assets/actions/ssh-compose-deploy/action.yml
+# Source of truth is that file — re-copy from there, don't hand-edit here.
+name: SSH compose deploy
+description: >
+  Deploy a docker-compose stack to a remote host over SSH (with optional
+  ProxyJump), with health-checked startup and image/build pruning.
+
+inputs:
+  ssh-private-key:
+    required: true
+  ssh-known-hosts:
+    required: true
+    description: >
+      Pinned host keys: the output of `ssh-keyscan -p <port> <host>` (and the
+      jump host's, if one is used), stored as a secret. Checking is strict.
+  ssh-jump-host:
+    required: false
+    default: ""
+  ssh-jump-user:
+    required: false
+    default: ""
+  ssh-host:
+    required: true
+  ssh-user:
+    required: true
+  ssh-port:
+    required: false
+    default: "22"
+  working-dir:
+    required: true
+    description: Remote path containing the project's compose.yml
+  compose-profiles:
+    required: false
+    default: ""
+    description: Space-separated compose profiles to include on `up` (e.g. "migrate")
+  wait-timeout:
+    required: false
+    default: "120"
+  prune-retention:
+    required: false
+    default: "168h"
+  github-token:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: webfactory/ssh-agent@v0.10.0
+      with:
+        ssh-private-key: ${{ inputs.ssh-private-key }}
+
+    - name: Configure SSH
+      shell: bash
+      env:
+        SSH_JUMP_HOST: ${{ inputs.ssh-jump-host }}
+        SSH_JUMP_USER: ${{ inputs.ssh-jump-user }}
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_KNOWN_HOSTS: ${{ inputs.ssh-known-hosts }}
+      run: |
+        # Host keys are pinned: SSH_KNOWN_HOSTS holds `ssh-keyscan` output and
+        # checking is strict, so nothing but the real host can answer.
+        #
+        # Inputs are read from env vars ($SSH_HOST, not ${{ inputs.ssh-host }})
+        # so nothing gets spliced directly into this script's source — see
+        # this action's README, "Inputs are always passed through env:".
+        if [ -z "$SSH_KNOWN_HOSTS" ]; then
+          echo "ssh-known-hosts is empty. Store the output of: ssh-keyscan -p <port> <host> (and the jump host, if any)" >&2
+          exit 1
+        fi
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+        if [ -n "$SSH_JUMP_HOST" ]; then
+          cat >> ~/.ssh/config << EOF
+        Host $SSH_JUMP_HOST
+          StrictHostKeyChecking yes
+        Host $SSH_HOST
+          StrictHostKeyChecking yes
+          ProxyJump ${SSH_JUMP_USER}@${SSH_JUMP_HOST}
+        EOF
+        else
+          cat >> ~/.ssh/config << EOF
+        Host $SSH_HOST
+          StrictHostKeyChecking yes
+        EOF
+        fi
+        chmod 600 ~/.ssh/config
+
+    - name: Deploy over SSH
+      shell: bash
+      env:
+        SSH_PORT: ${{ inputs.ssh-port }}
+        SSH_USER: ${{ inputs.ssh-user }}
+        SSH_HOST: ${{ inputs.ssh-host }}
+        WORKING_DIR: ${{ inputs.working-dir }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        PROFILE_FLAGS: ${{ inputs.compose-profiles }}
+        WAIT_TIMEOUT: ${{ inputs.wait-timeout }}
+        PRUNE_RETENTION: ${{ inputs.prune-retention }}
+      run: |
+        # Manually wrapping each value in single quotes (VAR='$VAR') is not
+        # safe: if the value itself contains a single quote, it breaks out
+        # of that quoting and injects arbitrary syntax into the remote
+        # command line. printf '%q' shell-escapes each value properly so it
+        # reconstitutes to the exact original string on the remote side,
+        # regardless of quotes, spaces, $(), backticks, or semicolons in it.
+        #
+        # ${SSH_PORT:=22} guards against a caller passing an empty string
+        # (e.g. ${{ secrets.SSH_PORT }} when that secret was never set) —
+        # an explicitly empty input overrides this action's own `default:
+        # '22'` in action.yml, since GitHub Actions only applies an
+        # input's default when the input is omitted entirely, not when
+        # it's passed as "". Confirmed with a live failure: `ssh -p ''`
+        # errors with "Bad port ''".
+        : "${SSH_PORT:=22}"
+        WORKING_DIR_Q=$(printf '%q' "$WORKING_DIR")
+        GH_TOKEN_Q=$(printf '%q' "$GH_TOKEN")
+        PROFILE_FLAGS_Q=$(printf '%q' "$PROFILE_FLAGS")
+        WAIT_TIMEOUT_Q=$(printf '%q' "$WAIT_TIMEOUT")
+        PRUNE_RETENTION_Q=$(printf '%q' "$PRUNE_RETENTION")
+
+        ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+          "WORKING_DIR=$WORKING_DIR_Q GH_TOKEN=$GH_TOKEN_Q PROFILE_FLAGS=$PROFILE_FLAGS_Q WAIT_TIMEOUT=$WAIT_TIMEOUT_Q PRUNE_RETENTION=$PRUNE_RETENTION_Q bash -s" << 'EOF'
+        set -euo pipefail
+
+        echo "$GH_TOKEN" | docker login ghcr.io -u x-access-token --password-stdin
+
+        cd "$WORKING_DIR"
+
+        profile_args=""
+        for p in $PROFILE_FLAGS; do
+          profile_args="$profile_args --profile $p"
+        done
+
+        if [ ! -f .env ] && [ -f .env.example ]; then
+          cp .env.example .env
+        fi
+
+        docker compose $profile_args pull
+        docker compose $profile_args up -d --wait --wait-timeout "$WAIT_TIMEOUT"
+
+        # Compose Desktop/Engine versions differ on `ps --format json` output shape:
+        # older/some versions emit one JSON object per line (JSONL), newer
+        # versions emit a single JSON array. Handle both.
+        unhealthy=$(docker compose ps --format json | jq -r 'if type == "array" then .[] else . end | select(.State != "running") | .Name')
+        if [ -n "$unhealthy" ]; then
+          for name in $unhealthy; do
+            echo "=== logs: $name ==="
+            docker logs --tail 50 "$name" || true
+          done
+          exit 1
+        fi
+
+        docker image prune -af --filter "until=$PRUNE_RETENTION"
+        docker builder prune -af --filter "until=$PRUNE_RETENTION"
+        EOF
+
+    - name: Deployment summary
+      shell: bash
+      if: always()
+      env:
+        JOB_STATUS: ${{ job.status }}
+        SSH_HOST: ${{ inputs.ssh-host }}
+        GIT_SHA: ${{ github.sha }}
+        GIT_REF_NAME: ${{ github.ref_name }}
+      run: |
+        {
+          echo "## Deployment Report"
+          echo "| Field | Value |"
+          echo "|---|---|"
+          echo "| Status | $JOB_STATUS |"
+          echo "| Host | $SSH_HOST |"
+          echo "| Commit | $GIT_SHA |"
+          echo "| Branch | $GIT_REF_NAME |"
+        } >> "$GITHUB_STEP_SUMMARY"

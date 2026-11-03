@@ -1,0 +1,156 @@
+# Vendored verbatim from the dev-pops cicd skill: assets/actions/git-sync-deploy/action.yml
+# Source of truth is that file — re-copy from there, don't hand-edit here.
+name: Git sync deploy
+description: >
+  Sync a repo's source onto a remote host over SSH (clone or fast-forward
+  reset) and bootstrap its deploy .env — the no-registry counterpart to
+  ssh-compose-deploy's "pull a prebuilt image" step. Use this when the
+  image is meant to be built on the target host itself.
+
+inputs:
+  ssh-private-key:
+    required: true
+  ssh-known-hosts:
+    required: true
+    description: >
+      Pinned host keys: the output of `ssh-keyscan -p <port> <host>` (and the
+      jump host's, if one is used), stored as a secret. Checking is strict.
+  ssh-jump-host:
+    required: false
+    default: ""
+  ssh-jump-user:
+    required: false
+    default: ""
+  ssh-host:
+    required: true
+  ssh-user:
+    required: true
+  ssh-port:
+    required: false
+    default: "22"
+  working-dir:
+    required: true
+    description: Absolute path on the remote host to clone/sync the repo into
+  repo:
+    required: true
+    description: "owner/name, e.g. github.com/<repo> without the host"
+  branch:
+    required: true
+    description: Branch to fetch and hard-reset to (ignored if commit-sha is set)
+  commit-sha:
+    required: false
+    default: ""
+    description: Exact commit to hard-reset to; overrides `branch` when set
+  github-token:
+    required: true
+    description: Run's own GITHUB_TOKEN — used as an HTTPS clone credential, valid for the job's lifetime only
+  compose-dir:
+    required: false
+    default: "docker/build-on-server"
+    description: Path (relative to repo root) containing compose.yml and .env.example
+
+runs:
+  using: composite
+  steps:
+    - uses: webfactory/ssh-agent@v0.10.0
+      with:
+        ssh-private-key: ${{ inputs.ssh-private-key }}
+
+    - name: Configure SSH
+      shell: bash
+      env:
+        SSH_JUMP_HOST: ${{ inputs.ssh-jump-host }}
+        SSH_JUMP_USER: ${{ inputs.ssh-jump-user }}
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_KNOWN_HOSTS: ${{ inputs.ssh-known-hosts }}
+      run: |
+        # Host keys are pinned: SSH_KNOWN_HOSTS holds `ssh-keyscan` output and
+        # checking is strict, so nothing but the real host can answer.
+        if [ -z "$SSH_KNOWN_HOSTS" ]; then
+          echo "ssh-known-hosts is empty. Store the output of: ssh-keyscan -p <port> <host> (and the jump host, if any)" >&2
+          exit 1
+        fi
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+        if [ -n "$SSH_JUMP_HOST" ]; then
+          cat >> ~/.ssh/config << EOF
+        Host $SSH_JUMP_HOST
+          StrictHostKeyChecking yes
+        Host $SSH_HOST
+          StrictHostKeyChecking yes
+          ProxyJump ${SSH_JUMP_USER}@${SSH_JUMP_HOST}
+        EOF
+        else
+          cat >> ~/.ssh/config << EOF
+        Host $SSH_HOST
+          StrictHostKeyChecking yes
+        EOF
+        fi
+        chmod 600 ~/.ssh/config
+
+    - name: Sync repo on remote host
+      shell: bash
+      env:
+        SSH_PORT: ${{ inputs.ssh-port }}
+        SSH_USER: ${{ inputs.ssh-user }}
+        SSH_HOST: ${{ inputs.ssh-host }}
+        WORKING_DIR: ${{ inputs.working-dir }}
+        REPO: ${{ inputs.repo }}
+        BRANCH: ${{ inputs.branch }}
+        COMMIT_SHA: ${{ inputs.commit-sha }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        COMPOSE_DIR: ${{ inputs.compose-dir }}
+      run: |
+        # Every value is printf '%q'-escaped before being spliced into the
+        # remote command string, never manually single-quote-wrapped — see
+        # ssh-compose-deploy's README for why manual wrapping is unsafe
+        # (a value containing a single quote breaks out of that quoting).
+        #
+        # ${SSH_PORT:=22} guards against a caller passing an empty string
+        # (e.g. ${{ secrets.SSH_PORT }} when that secret was never set) —
+        # an explicitly empty input overrides this action's own `default:
+        # '22'` in action.yml, since GitHub Actions only applies an
+        # input's default when the input is omitted entirely, not when
+        # it's passed as "". Confirmed with a live failure: `ssh -p ''`
+        # errors with "Bad port ''".
+        : "${SSH_PORT:=22}"
+        WORKING_DIR_Q=$(printf '%q' "$WORKING_DIR")
+        REPO_Q=$(printf '%q' "$REPO")
+        BRANCH_Q=$(printf '%q' "$BRANCH")
+        COMMIT_SHA_Q=$(printf '%q' "$COMMIT_SHA")
+        GH_TOKEN_Q=$(printf '%q' "$GH_TOKEN")
+        COMPOSE_DIR_Q=$(printf '%q' "$COMPOSE_DIR")
+
+        ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+          "WORKING_DIR=$WORKING_DIR_Q REPO=$REPO_Q BRANCH=$BRANCH_Q COMMIT_SHA=$COMMIT_SHA_Q GH_TOKEN=$GH_TOKEN_Q COMPOSE_DIR=$COMPOSE_DIR_Q bash -s" << 'EOF'
+        set -euo pipefail
+
+        REPO_DIR="${WORKING_DIR}/${REPO##*/}"
+        CLONE_URL="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+
+        mkdir -p "$WORKING_DIR"
+
+        if [ ! -d "$REPO_DIR/.git" ]; then
+          git clone --branch "$BRANCH" "$CLONE_URL" "$REPO_DIR"
+        fi
+
+        cd "$REPO_DIR"
+        git remote set-url origin "$CLONE_URL"
+        git fetch origin "$BRANCH"
+        if [ -n "$COMMIT_SHA" ]; then
+          git reset --hard "$COMMIT_SHA"
+        else
+          git checkout "$BRANCH"
+          git reset --hard "origin/$BRANCH"
+        fi
+        git clean -fd
+        # Drop the token from the on-disk remote URL immediately after use —
+        # it's only valid for this job's lifetime anyway, but there's no
+        # reason to leave it sitting in .git/config between deploys.
+        git remote set-url origin "https://github.com/${REPO}.git"
+
+        if [ ! -f "$REPO_DIR/$COMPOSE_DIR/.env" ] && [ -f "$REPO_DIR/$COMPOSE_DIR/.env.example" ]; then
+          cp "$REPO_DIR/$COMPOSE_DIR/.env.example" "$REPO_DIR/$COMPOSE_DIR/.env"
+        fi
+        EOF

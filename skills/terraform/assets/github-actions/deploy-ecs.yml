@@ -1,0 +1,136 @@
+# Template: build -> push to ECR -> run migrations -> deploy to ECS, for ONE environment.
+# Copy to .github/workflows/deploy-<ENVIRONMENT>.yml in your application repository, once per
+# environment, and replace every <ANGLE_BRACKET> marker. The values come from
+# `terraform output` in environments/<ENVIRONMENT> and from that environment's terraform.tfvars.
+name: Deploy <ENVIRONMENT> to ECS
+
+on:
+  push:
+    branches: [<BRANCH>] # must match the branch in that environment's github_allowed_subjects
+  workflow_dispatch:
+    inputs:
+      run_seed:
+        description: Run the seed task before deploying
+        type: boolean
+        default: false
+
+# Required for GitHub to issue the OIDC token that AWS exchanges for credentials.
+permissions:
+  id-token: write
+  contents: read
+
+# Never run two deploys of the same environment at once.
+concurrency:
+  group: deploy-<ENVIRONMENT>
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: <REGION>
+  AWS_ROLE_ARN: <GITHUB_ACTIONS_ROLE_ARN> # output: github_actions_role_arn
+  ECR_REPOSITORY: <ECR_REPOSITORY_NAME> # tfvars: ecr_repository_name
+  ECS_CLUSTER: <CLUSTER_NAME> # output: cluster_name
+  ECS_SERVICE: <SERVICE_NAME> # output: service_name
+  SERVICE_CONTAINER: <SERVICE_CONTAINER> # container name in the service task definition (module default: nginx)
+  MIGRATE_TASK_FAMILY: <SERVICE_NAME>-migrate # see output one_off_task_families
+  SEED_TASK_FAMILY: <SERVICE_NAME>-seed # see output one_off_task_families
+  ONE_OFF_CONTAINER: <ONE_OFF_CONTAINER> # container name in the one-off task definitions (module default: app)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # The repository has immutable tags, so every image is tagged with the commit SHA.
+      - name: Build and push image
+        id: image
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        run: |
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "uri=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      # --- Migrations: run before the new code goes live ---------------------
+      # Migrations must stay backwards compatible, because the old tasks keep
+      # serving traffic while the new ones roll out.
+      - name: Fetch migrate task definition
+        run: |
+          aws ecs describe-task-definition --task-definition "$MIGRATE_TASK_FAMILY" \
+            --query taskDefinition > migrate-task-definition.json
+
+      - name: Render migrate task definition
+        id: render-migrate
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: migrate-task-definition.json
+          container-name: ${{ env.ONE_OFF_CONTAINER }}
+          image: ${{ steps.image.outputs.uri }}
+
+      # Fails the job (and stops the deploy) if the task exits non-zero.
+      - name: Run migrations
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-migrate.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          run-task: true
+          wait-for-task-stopped: true
+
+      # --- Seed: only when started manually with run_seed ticked -------------
+      - name: Fetch seed task definition
+        if: ${{ inputs.run_seed }}
+        run: |
+          aws ecs describe-task-definition --task-definition "$SEED_TASK_FAMILY" \
+            --query taskDefinition > seed-task-definition.json
+
+      - name: Render seed task definition
+        if: ${{ inputs.run_seed }}
+        id: render-seed
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: seed-task-definition.json
+          container-name: ${{ env.ONE_OFF_CONTAINER }}
+          image: ${{ steps.image.outputs.uri }}
+
+      - name: Run seed
+        if: ${{ inputs.run_seed }}
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-seed.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          run-task: true
+          wait-for-task-stopped: true
+
+      # --- Deploy the service ------------------------------------------------
+      - name: Fetch service task definition
+        run: |
+          aws ecs describe-task-definition --task-definition "$ECS_SERVICE" \
+            --query taskDefinition > task-definition.json
+
+      - name: Render service task definition
+        id: render-service
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.SERVICE_CONTAINER }}
+          image: ${{ steps.image.outputs.uri }}
+
+      # The service's deployment circuit breaker rolls back automatically on failure.
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-service.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

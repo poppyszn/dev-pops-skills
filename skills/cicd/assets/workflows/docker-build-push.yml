@@ -1,0 +1,79 @@
+name: Build and push image
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        required: true
+        type: string
+      dockerfile:
+        required: false
+        type: string
+        default: Dockerfile
+      image-tag:
+        required: true
+        type: string
+      # Commit to build and tag. Empty builds the commit that triggered the
+      # run. A caller deploying a chosen commit (a rollback or redeploy) must
+      # pass it, or the image is built from, and tagged with, the wrong commit.
+      ref:
+        required: false
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      app:
+        required: true
+        type: string
+      image-tag:
+        required: true
+        type: string
+      ref:
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # GHCR image paths must be all-lowercase, but github.repository
+      # preserves the owner's actual case (e.g. SomeOrg/repo) — a
+      # mixed-case tag makes docker/build-push-action fail every push.
+      # Confirmed against a real repo with an uppercase-containing owner
+      # name (property-management-api, owner VICTOR-CHUKWU).
+      - name: Compute lowercase image repository
+        env:
+          REPO: ${{ github.repository }}
+        run: echo "REPO_LC=${REPO,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LC }}-${{ inputs.app }}:${{ inputs.image-tag }}
+            ghcr.io/${{ env.REPO_LC }}-${{ inputs.app }}:${{ inputs.ref || github.sha }}
+          cache-from: type=gha,scope=${{ inputs.app }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.app }}
+          sbom: true
+          provenance: true

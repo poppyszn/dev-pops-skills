@@ -1,0 +1,72 @@
+# Pull-based deploy stack — pulls prebuilt images from a registry, no
+# local build. Uses the usual pull-based convention (image:, not build:),
+# deployed by
+# the ssh-compose-deploy action (dev-pops cicd skill). Assumes
+# externally-managed postgres/redis — no infra containers here.
+#
+# For the opposite convention (build directly on the target host, no
+# registry needed), see ../build-on-server/compose.yml instead — use one
+# or the other, not both.
+
+name: example-monorepo-develop
+
+services:
+  migrate:
+    image: ghcr.io/<GH_ORG>/<REPO>-api:${IMAGE_TAG:-latest-develop}
+    command: migrate
+    restart: "no"
+    env_file:
+      - .env
+
+  seed:
+    image: ghcr.io/<GH_ORG>/<REPO>-api:${IMAGE_TAG:-latest-develop}
+    command: seed
+    restart: "no"
+    profiles: ["seed"]
+    env_file:
+      - .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    image: ghcr.io/<GH_ORG>/<REPO>-api:${IMAGE_TAG:-latest-develop}
+    command: start
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${API_PORT:-4000}:4000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # 127.0.0.1, not localhost: the image resolves localhost to ::1 first
+    # and Node binds IPv4, so the check fails against a healthy server and
+    # every `depends_on: condition: service_healthy` downstream stalls.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    image: ghcr.io/<GH_ORG>/<REPO>-web:${IMAGE_TAG:-latest-develop}
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  admin:
+    image: ghcr.io/<GH_ORG>/<REPO>-admin:${IMAGE_TAG:-latest-develop}
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${ADMIN_PORT:-3001}:80"
+    depends_on:
+      api:
+        condition: service_healthy

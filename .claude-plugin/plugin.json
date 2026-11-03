@@ -1,0 +1,9 @@
+{
+  "name": "dev-pops-skills",
+  "description": "Focused DevOps skills: docker, cicd, security, scripting, terraform, project-infra, skill-authoring.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Precious Okpor"
+  },
+  "license": "MIT"
+}

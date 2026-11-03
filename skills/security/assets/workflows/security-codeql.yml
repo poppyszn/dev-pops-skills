@@ -1,0 +1,32 @@
+# OPT-IN. Add only when the repo is public, or the org has the paid GitHub
+# Code Security add-on (split out of the old Advanced Security bundle, billed
+# per active committer). On a private repo without it, this workflow can't
+# succeed. The default security.yml deliberately leaves CodeQL out.
+name: CodeQL
+
+on:
+  # Same policy as CI: pull requests (not pushes), plus the weekly schedule
+  # for new CVEs against unchanged code, plus manual re-runs.
+  pull_request:
+    branches: [<INTEGRATION_BRANCH>]
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  workflow_dispatch: # manual re-run, e.g. right after a new CVE disclosure
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # required on private repos (codeql-action README)
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+
+      - uses: github/codeql-action/analyze@v4

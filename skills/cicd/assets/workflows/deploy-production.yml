@@ -1,0 +1,455 @@
+name: Deploy production branch
+
+# Production topology (see references/deploy-production.md):
+#   web      -> built here, synced to S3, served by CloudFront (OIDC role, no stored keys)
+#   api, ... -> GHCR images named by commit SHA, run by compose on the production
+#               host over SSH (docker/production/compose.yml)
+#
+# npm workspaces variant: every run verifies, then builds and deploys the apps
+# listed under `env` below (no change detection). For pnpm + Nx with affected
+# detection use deploy-production-nx.yml.
+#
+# All environment-specific values live in the `production` GitHub Environment:
+#   secrets:   SSH_PRIVATE_KEY, SSH_USER, SSH_HOST, SSH_KNOWN_HOSTS, WORKING_DIR
+#              and, only when a bastion is used, SSH_JUMP_HOST, SSH_USER_JUMP
+#              (optional: SSH_PORT)
+#   variables: AWS_ROLE_ARN, AWS_REGION, WEB_BUCKET, CLOUDFRONT_DISTRIBUTION_ID,
+#              VITE_API_ORIGIN
+#              (optional smoke tests: WEB_URL, API_HEALTH_URL)
+#
+# This workflow does not call the CI workflow. CI runs on pull requests and is
+# enforced by required status checks; the deploy carries only a light gate
+# (lint and typecheck) so a broken commit never reaches an image or the host.
+
+on:
+  push:
+    branches: [production]
+    paths-ignore:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "LICENSE"
+      - "docs/**"
+      - ".github/**"
+      - "*.md"
+      - ".gitignore"
+      - ".dockerignore"
+      - ".editorconfig"
+      - ".env.example"
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Commit SHA to deploy (leave empty for the branch head)"
+        required: false
+        type: string
+      deploy_server:
+        description: "Deploy the server apps (images and host)"
+        required: false
+        type: boolean
+        default: true
+      deploy_web:
+        description: "Deploy the web app (S3 and CloudFront)"
+        required: false
+        type: boolean
+        default: true
+      skip_build:
+        description: "Rollback: redeploy the images already built for commit_sha instead of building again"
+        required: false
+        type: boolean
+        default: false
+
+# A cancelled deploy leaves the host half-updated, so never cancel one. The
+# migrate and seed workflows share this group so they cannot overlap a deploy.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Edit these for the project. Each server app needs apps/<name>/Dockerfile and
+  # a compose service of the same name; the web app is a workspace under apps/.
+  SERVER_APPS_ALL: '["api"]'
+  WEB_APP: web
+  API_APP: api
+  WEB_DIST: apps/web/dist
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      server_apps: ${{ steps.plan.outputs.server_apps }}
+      web: ${{ steps.plan.outputs.web }}
+    steps:
+      - name: Require a commit for a rollback
+        if: ${{ inputs.skip_build && inputs.commit_sha == '' }}
+        run: |
+          echo "skip_build redeploys images that already exist, so it needs commit_sha." >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Light gate: only what would break the app once deployed. Full lint, unit,
+      # e2e and browser tests stay on pull requests. --if-present skips a
+      # workspace that has no such script. Add or drop scripts to match the repo.
+      - name: Light pre-deploy gate (lint and typecheck)
+        run: |
+          npm run lint --workspaces --if-present
+          npm run typecheck --workspaces --if-present
+
+      - name: Plan the deploy
+        id: plan
+        env:
+          DEPLOY_SERVER: ${{ inputs.deploy_server }}
+          DEPLOY_WEB: ${{ inputs.deploy_web }}
+        run: |
+          # A push has no inputs, so an empty value means yes.
+          if [ "${DEPLOY_SERVER:-true}" = "false" ]; then SERVER_APPS='[]'; else SERVER_APPS="$SERVER_APPS_ALL"; fi
+          if [ "${DEPLOY_WEB:-true}" = "false" ]; then WEB=false; else WEB=true; fi
+          echo "server_apps=$SERVER_APPS" >> "$GITHUB_OUTPUT"
+          echo "web=$WEB" >> "$GITHUB_OUTPUT"
+          echo "Server apps: $SERVER_APPS; web: $WEB"
+
+  # Builds each server app image and tags it latest-production plus the commit
+  # SHA. The host runs the SHA tag (see deploy-server), so a rollback is a
+  # redeploy of an older SHA. Calls the vendored reusable workflow; copy
+  # docker-build-push.yml next to this file. It builds amd64 and arm64 under
+  # QEMU; to build natively for an arm64 host instead, replace this job with an
+  # inline one on `runs-on: ubuntu-24.04-arm` (references/deploy-production.md).
+  build-and-push:
+    name: Build and push ${{ matrix.app }}
+    needs: verify
+    if: ${{ needs.verify.outputs.server_apps != '[]' && !inputs.skip_build }}
+    strategy:
+      matrix:
+        app: ${{ fromJson(needs.verify.outputs.server_apps) }}
+    # A called workflow cannot get more than its caller grants.
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build-push.yml
+    with:
+      app: ${{ matrix.app }}
+      dockerfile: apps/${{ matrix.app }}/Dockerfile
+      image-tag: latest-production
+      ref: ${{ inputs.commit_sha }}
+
+  deploy-server:
+    name: Deploy to the production host
+    needs: [verify, build-and-push]
+    # build-and-push is skipped on a rollback (skip_build), so accept skipped as
+    # well as success; any failure upstream stops the deploy.
+    if: ${{ !cancelled() && needs.verify.result == 'success' && contains(fromJson('["success","skipped"]'), needs.build-and-push.result) && needs.verify.outputs.server_apps != '[]' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    # A job-level block replaces the top-level one entirely. packages: read lets
+    # the run's token `docker pull` from GHCR on the host.
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_ACTOR: ${{ github.actor }}
+      REPO: ${{ github.repository }}
+      DEPLOY_SHA: ${{ inputs.commit_sha || github.sha }}
+      DEPLOY_APPS: ${{ join(fromJson(needs.verify.outputs.server_apps), ' ') }}
+      WORKING_DIR: ${{ secrets.WORKING_DIR }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      # || '22': an unset secret is an empty string, and `ssh -p ''` fails with "Bad port ''".
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+      SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      SSH_JUMP_HOST: ${{ secrets.SSH_JUMP_HOST }}
+      SSH_USER_JUMP: ${{ secrets.SSH_USER_JUMP }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # Host keys are pinned: SSH_KNOWN_HOSTS holds `ssh-keyscan -p <port> <host>`
+      # output (and the bastion's, if one is used), and checking is strict, so a
+      # man in the middle cannot answer as the host.
+      - name: Configure SSH
+        run: |
+          if [ -z "$SSH_KNOWN_HOSTS" ]; then
+            echo "SSH_KNOWN_HOSTS is empty. Add the output of: ssh-keyscan -p <port> <host>" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          {
+            echo "Host ${SSH_HOST}"
+            echo "  StrictHostKeyChecking yes"
+            if [ -n "$SSH_JUMP_HOST" ]; then
+              echo "  ProxyJump ${SSH_USER_JUMP}@${SSH_JUMP_HOST}"
+            fi
+          } >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      # GHCR image paths must be lowercase; github.repository keeps the owner's case.
+      - name: Compute image prefix
+        run: echo "IMAGE_PREFIX=ghcr.io/${REPO,,}" >> "$GITHUB_ENV"
+
+      - name: Pull images
+        run: |
+          # ssh joins trailing arguments with plain spaces and does not keep
+          # local quoting, so every value sent to the remote shell is quoted.
+          ssh -p "$SSH_PORT" "$SSH_TARGET" \
+            GH_TOKEN="$(printf '%q' "$GH_TOKEN")" \
+            GH_ACTOR="$(printf '%q' "$GH_ACTOR")" \
+            IMAGE_PREFIX="$(printf '%q' "$IMAGE_PREFIX")" \
+            DEPLOY_SHA="$(printf '%q' "$DEPLOY_SHA")" \
+            DEPLOY_APPS="$(printf '%q' "$DEPLOY_APPS")" \
+            'bash -s' << 'EOF'
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          for app in $DEPLOY_APPS; do
+            echo "Pulling ${IMAGE_PREFIX}-${app}:${DEPLOY_SHA}"
+            docker pull "${IMAGE_PREFIX}-${app}:${DEPLOY_SHA}"
+          done
+          EOF
+
+      # init + fetch, not clone: a clone refuses a directory that already holds
+      # files, and the host's .env may be created before the first deploy. The
+      # token is passed for this one command and never written to .git/config.
+      - name: Sync repository to the deployed commit
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_TARGET" \
+            GH_TOKEN="$(printf '%q' "$GH_TOKEN")" \
+            WORKING_DIR="$(printf '%q' "$WORKING_DIR")" \
+            REPO="$(printf '%q' "$REPO")" \
+            DEPLOY_SHA="$(printf '%q' "$DEPLOY_SHA")" \
+            'bash -s' << 'EOF'
+          set -euo pipefail
+          REPO_DIR="${WORKING_DIR}/${REPO##*/}"
+          mkdir -p "$REPO_DIR"
+          cd "$REPO_DIR"
+          [ -d .git ] || git init -q
+          git remote remove origin 2>/dev/null || true
+          git remote add origin "https://github.com/${REPO}.git"
+          AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" fetch --depth 1 origin "$DEPLOY_SHA"
+          git reset --hard FETCH_HEAD
+          # `git clean` removes untracked files. The host .env is untracked, so it
+          # must be ignored or the next line would delete the production secrets.
+          if ! git check-ignore -q docker/production/.env; then
+            echo "docker/production/.env must be listed in .gitignore: git clean would delete it." >&2
+            exit 1
+          fi
+          git clean -fd
+          EOF
+
+      # Blocking. The host .env is operator-managed and is never created from
+      # .env.example here (placeholder secrets must not boot in production).
+      - name: Preflight
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_TARGET" \
+            WORKING_DIR="$(printf '%q' "$WORKING_DIR")" \
+            REPO="$(printf '%q' "$REPO")" \
+            DEPLOY_APPS="$(printf '%q' "$DEPLOY_APPS")" \
+            'bash -s' << 'EOF'
+          set -euo pipefail
+          cd "${WORKING_DIR}/${REPO##*/}/docker/production"
+          bash ./preflight.sh "$DEPLOY_APPS"
+          EOF
+
+      # Runs only when the api is part of this deploy, before it restarts. A
+      # failed migration stops the job here, so the old api keeps running.
+      # Migrations run while the old api still serves traffic, so they must stay
+      # compatible with it (add first, remove later).
+      - name: Run database migrations
+        if: ${{ contains(fromJson(needs.verify.outputs.server_apps), env.API_APP) }}
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_TARGET" \
+            WORKING_DIR="$(printf '%q' "$WORKING_DIR")" \
+            REPO="$(printf '%q' "$REPO")" \
+            DEPLOY_SHA="$(printf '%q' "$DEPLOY_SHA")" \
+            'bash -s' << 'EOF'
+          set -euo pipefail
+          cd "${WORKING_DIR}/${REPO##*/}/docker/production"
+          export IMAGE_TAG="$DEPLOY_SHA"
+          echo "Running migrations..."
+          # < /dev/null is required: `docker compose run` reads stdin, and this
+          # script is itself the stdin. Without it the migrate container swallows
+          # the rest of the heredoc and the step passes having run nothing after it.
+          docker compose --env-file .env run --rm migrate < /dev/null
+          echo "Migrations finished."
+          EOF
+
+      - name: Start containers
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_TARGET" \
+            WORKING_DIR="$(printf '%q' "$WORKING_DIR")" \
+            REPO="$(printf '%q' "$REPO")" \
+            DEPLOY_SHA="$(printf '%q' "$DEPLOY_SHA")" \
+            DEPLOY_APPS="$(printf '%q' "$DEPLOY_APPS")" \
+            'bash -s' << 'EOF'
+          set -euo pipefail
+          cd "${WORKING_DIR}/${REPO##*/}/docker/production"
+          # The compose file runs ghcr.io/<owner>/<repo>-<app>:${IMAGE_TAG}.
+          export IMAGE_TAG="$DEPLOY_SHA"
+          docker compose --env-file .env pull $DEPLOY_APPS
+          docker compose --env-file .env up -d --wait --wait-timeout 120 --no-deps $DEPLOY_APPS
+          # `ps --format json` is JSON Lines on some Compose versions and an array
+          # on others; handle both.
+          UNHEALTHY=$(docker compose --env-file .env ps --format json | jq -rs 'if (.[0] | type) == "array" then .[0] else . end | .[] | select(.State != "running") | .Name')
+          if [ -n "$UNHEALTHY" ]; then
+            echo "The following containers are not running:"
+            echo "$UNHEALTHY"
+            for container in $UNHEALTHY; do
+              echo "--- $container ---"
+              docker logs --tail 50 "$container" 2>&1 || true
+            done
+            exit 1
+          fi
+          EOF
+
+      # Optional: set the API_HEALTH_URL variable (e.g. https://api.example.com/health).
+      - name: Smoke test the api
+        if: ${{ vars.API_HEALTH_URL != '' && contains(fromJson(needs.verify.outputs.server_apps), env.API_APP) }}
+        run: curl -fsS --retry 6 --retry-delay 5 --retry-connrefused -o /dev/null "$API_HEALTH_URL"
+
+      - name: Clean up
+        if: always()
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_TARGET" 'bash -s' << 'EOF'
+          set -uo pipefail
+          # Log out first: the registry credentials must not outlive this deploy,
+          # even if a prune below fails. This is the last step that needs them gone.
+          docker logout ghcr.io || true
+          docker image prune -a -f --filter "until=168h" || true
+          docker builder prune -f --filter "until=336h" || true
+          docker container prune -f --filter "until=168h" || true
+          docker system df
+          EOF
+
+  # Runs in parallel with the server deploy, so a release does not wait on image
+  # builds. The trade-off: a failed server deploy can leave the new SPA live
+  # against the old api, so keep api changes backward compatible with the
+  # previous SPA. To order them instead, add `deploy-server` to `needs`.
+  deploy-web:
+    name: Deploy web to S3 and CloudFront
+    needs: verify
+    if: ${{ needs.verify.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # the OIDC token the AWS role is assumed with
+    env:
+      # Baked into the bundle at build time: this SPA is built for production
+      # here, not promoted from another environment.
+      VITE_API_ORIGIN: ${{ vars.VITE_API_ORIGIN }}
+      WEB_BUCKET: ${{ vars.WEB_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      WEB_URL: ${{ vars.WEB_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web
+        run: |
+          case "$VITE_API_ORIGIN" in
+            https://*) ;;
+            *) echo "VITE_API_ORIGIN must be an https:// origin (got '${VITE_API_ORIGIN}')." >&2; exit 1 ;;
+          esac
+          npm run build --workspace="apps/${WEB_APP}"
+          test -f "$WEB_DIST/index.html"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Mirrors the container build's nginx rules: hashed assets are immutable,
+      # everything else (index.html, favicons) revalidates so a deploy is picked
+      # up without a hard reload. Assets go first and are never deleted, so a
+      # browser holding the previous index.html can still load its chunks. The
+      # --delete pass excludes assets/, so it cannot remove them.
+      - name: Sync to S3
+        run: |
+          aws s3 sync "$WEB_DIST/assets" "s3://${WEB_BUCKET}/assets" \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 sync "$WEB_DIST" "s3://${WEB_BUCKET}" \
+            --exclude "assets/*" \
+            --cache-control "no-cache" \
+            --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*" \
+            --query 'Invalidation.Id' --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --id "$INVALIDATION_ID"
+
+      # Optional: set the WEB_URL variable (e.g. https://erp.example.com). The
+      # last check catches a distribution that rewrites missing files to the app shell.
+      - name: Smoke test the site
+        if: ${{ vars.WEB_URL != '' }}
+        run: |
+          base="${WEB_URL%/}"
+          status() { curl -s -o /dev/null -w '%{http_code}' --retry 5 --retry-delay 3 "$1"; }
+          [ "$(status "$base/")" = "200" ] || { echo "$base/ did not return 200" >&2; exit 1; }
+          [ "$(status "$base/deploy-smoke-test-route")" = "200" ] || { echo "a client-side route must serve the app shell (200)" >&2; exit 1; }
+          type=$(curl -sI "$base/deploy-smoke-test-route" | tr -d '\r' | awk 'tolower($1)=="content-type:" {print tolower($2)}')
+          case "$type" in text/html*) ;; *) echo "a client-side route must return HTML, got '$type'" >&2; exit 1 ;; esac
+          [ "$(status "$base/assets/deploy-smoke-test-missing.js")" = "404" ] || { echo "a missing asset must be a 404, not the app shell" >&2; exit 1; }
+          echo "Smoke test passed."
+
+  summary:
+    name: Deployment summary
+    needs: [verify, build-and-push, deploy-server, deploy-web]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SERVER_APPS: ${{ needs.verify.outputs.server_apps }}
+      WEB: ${{ needs.verify.outputs.web }}
+      SERVER_RESULT: ${{ needs.deploy-server.result }}
+      WEB_RESULT: ${{ needs.deploy-web.result }}
+      COMMIT: ${{ inputs.commit_sha || github.sha }}
+      EVENT: ${{ github.event_name }}
+    steps:
+      - name: Write summary
+        run: |
+          {
+            echo "## Production deployment report"
+            echo "- **Server apps**: ${SERVER_APPS:-none} (${SERVER_RESULT})"
+            echo "- **Web**: ${WEB:-false} (${WEB_RESULT})"
+            echo "- **Commit**: \`${COMMIT}\`"
+            echo "- **Triggered by**: ${EVENT}"
+          } >> "$GITHUB_STEP_SUMMARY"

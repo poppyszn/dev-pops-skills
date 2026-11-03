@@ -1,0 +1,174 @@
+name: Deploy develop branch (build on server)
+
+# No-registry deploy: syncs source to the target host over SSH and builds
+# the image(s) there with `docker compose build`, instead of pulling a
+# prebuilt image from a registry. See git-sync-deploy's README for when
+# to reach for this instead of docker-build-push.yml + ssh-compose-deploy.
+#
+# Copy this file to .github/workflows/deploy-develop.yml and vendor
+# ../actions/git-sync-deploy into .github/actions/git-sync-deploy first.
+
+on:
+  push:
+    branches: [develop]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".github/**"
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Commit SHA to deploy (leave empty for latest on develop)"
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false # never cancel an in-flight deploy
+
+permissions:
+  contents: read # git-sync-deploy uses the run's token as an HTTPS clone credential
+
+jobs:
+  # Light pre-deploy gate: only what would break the app once deployed.
+  # Full lint/unit/e2e suites run on pull requests (CI); this workflow never
+  # calls CI. Checks the same commit the server will build.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.commit_sha || github.sha }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # --if-present: a missing script is skipped, not failed.
+      - run: npm run lint --if-present
+
+      - run: npm run typecheck --if-present
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: develop
+    timeout-minutes: 20
+    env:
+      # || '22', not a bare secret reference: an unset SSH_PORT secret
+      # evaluates to an empty string, not "undefined" — used raw below
+      # in `ssh -p "$SSH_PORT"`, an empty value fails with "Bad port ''".
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      WORKING_DIR: ${{ secrets.WORKING_DIR }}
+      REPO: ${{ github.repository }}
+      # Path (relative to repo root) that docker/build-on-server lives at — override
+      # if you copied that directory somewhere else.
+      COMPOSE_DIR: docker/build-on-server
+    steps:
+      # Required even though this job doesn't need the repo's source for
+      # anything itself — `uses: ./.github/actions/...` below resolves a
+      # local composite action from the runner's own checked-out
+      # workspace, and every job starts on a fresh, empty runner. Without
+      # this, the local action can't be found at all ("Can't find
+      # 'action.yml'... Did you forget to run actions/checkout").
+      - uses: actions/checkout@v7
+
+      - name: Sync repo to server
+        uses: ./.github/actions/git-sync-deploy
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          ssh-known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          ssh-jump-host: ${{ secrets.SSH_JUMP_HOST }}
+          ssh-jump-user: ${{ secrets.SSH_USER_JUMP }}
+          ssh-host: ${{ secrets.SSH_HOST }}
+          ssh-user: ${{ secrets.SSH_USER }}
+          ssh-port: ${{ env.SSH_PORT }}
+          working-dir: ${{ secrets.WORKING_DIR }}
+          repo: ${{ github.repository }}
+          branch: ${{ github.ref_name }}
+          commit-sha: ${{ github.event.inputs.commit_sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          compose-dir: docker/build-on-server
+
+      - name: Build and start stack on server
+        run: |
+          # See git-sync-deploy's README for why every value is
+          # printf '%q'-escaped before being spliced into the SSH command
+          # rather than manually single-quote-wrapped.
+          WORKING_DIR_Q=$(printf '%q' "$WORKING_DIR")
+          REPO_Q=$(printf '%q' "$REPO")
+          COMPOSE_DIR_Q=$(printf '%q' "$COMPOSE_DIR")
+
+          ssh -p "$SSH_PORT" "$SSH_TARGET" \
+            WORKING_DIR="$WORKING_DIR_Q" REPO="$REPO_Q" COMPOSE_DIR="$COMPOSE_DIR_Q" \
+            'bash -s' << 'EOF'
+          set -euo pipefail
+          cd "${WORKING_DIR}/${REPO##*/}/${COMPOSE_DIR}"
+
+          docker compose --env-file .env build
+
+          # migrate is a one-shot job, not every project has one — run it
+          # only if the compose file actually declares it.
+          #
+          # < /dev/null on the run command matters: this whole script is
+          # itself delivered to the remote `bash -s` as one stdin stream
+          # over SSH. `docker compose run` attaches stdin by default (like
+          # `docker run -i`), so without redirecting it away from an empty
+          # source, the container consumes the rest of THIS heredoc as its
+          # own input before bash ever reads it — everything after this
+          # line (the `up -d --wait` and health check) silently never
+          # runs, with no error; the step still reports success.
+          if docker compose config --services | grep -qx migrate; then
+            echo "Running migrations..."
+            docker compose --env-file .env run --rm migrate < /dev/null
+          fi
+
+          docker compose --env-file .env up -d --wait --wait-timeout 120
+
+          # Compose Desktop/Engine versions differ on `ps --format json`
+          # output shape: some emit one JSON object per line (JSONL),
+          # others emit a single JSON array. Handle both.
+          unhealthy=$(docker compose --env-file .env ps --format json | jq -r 'if type == "array" then .[] else . end | select(.State != "running") | .Name')
+          if [ -n "$unhealthy" ]; then
+            echo "The following containers are not running:"
+            for name in $unhealthy; do
+              echo "=== logs: $name ==="
+              docker logs --tail 50 "$name" || true
+            done
+            exit 1
+          fi
+          EOF
+
+      - name: Clean up Docker resources
+        if: always()
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_TARGET" 'bash -s' << 'EOF'
+          set -euo pipefail
+          docker image prune -af --filter "until=168h"
+          docker builder prune -af --filter "until=168h"
+          docker container prune -f --filter "until=168h"
+          EOF
+
+      - name: Deployment summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          GIT_SHA: ${{ github.sha }}
+          GIT_REF_NAME: ${{ github.ref_name }}
+        run: |
+          {
+            echo "## Deployment Report"
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Status | $JOB_STATUS |"
+            echo "| Host | $SSH_HOST |"
+            echo "| Commit | $GIT_SHA |"
+            echo "| Branch | $GIT_REF_NAME |"
+          } >> "$GITHUB_STEP_SUMMARY"

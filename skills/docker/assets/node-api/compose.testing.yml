@@ -1,0 +1,45 @@
+# Test-only infrastructure: real dependencies for integration tests (CI or
+# local), no app services and no `build:` blocks. Place at
+# docker/testing/compose.yml. Differs from compose.yml on purpose:
+# - no named volumes: data lives in anonymous volumes, so `down -v` always
+#   gives the next run a clean database
+# - tighter resource limits: tests shouldn't need production-sized infra
+# - no `restart:`: a crashed dependency should fail the test run, not hide
+#
+#   docker compose -f docker/testing/compose.yml up -d --wait
+#   npm test
+#   docker compose -f docker/testing/compose.yml down -v
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-app}
+      POSTGRES_DB: ${DB_NAME:-app_test}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-app}"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  # CI runs on pull requests only (plus manual runs). Deploys carry their own
+  # light pre-deploy gate and never call this workflow. Enforce CI by making
+  # this workflow's jobs required status checks on <INTEGRATION_BRANCH>.
+  pull_request:
+    branches: [<INTEGRATION_BRANCH>]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm test
+
+      - run: npm run build

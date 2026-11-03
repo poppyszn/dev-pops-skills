@@ -1,0 +1,120 @@
+# Operational tooling for THIS repo, not a template for other projects
+# (same category as .github/dependabot.yml and the freshness audit).
+# On every pull request and every push to main it runs what AGENTS.md and the
+# PR template ask a reviewer to see: the skills validator, the trigger-eval
+# dataset, internal links, syntax and lint for the assets, a secret scan, and
+# the terraform skill's scratch-project check. Nothing here fetches or deploys.
+#
+# Third-party actions are pinned to a commit SHA (the version is in the comment;
+# Dependabot keeps both current). Tool versions are pinned too.
+
+name: Validate skills
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  skills:
+    name: Skills validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Exits non-zero on FAIL. WARN lines (stale last-verified, long SKILL.md)
+      # are printed but do not fail the job.
+      - name: Validate every skill
+        run: ./scripts/validate-skills.sh
+
+      - name: Trigger-eval dataset is well-formed and covers every skill
+        run: ./scripts/eval-triggers.sh --lint
+
+      - name: Internal links and referenced paths exist
+        run: ./scripts/check-links.sh
+
+  assets:
+    name: Asset syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Shell syntax
+        run: |
+          set -euo pipefail
+          find scripts skills evals -name '*.sh' -print0 | xargs -0 -n1 bash -n
+
+      - name: YAML parses (workflows, compose, dependabot)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          find skills .github -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
+            | xargs -0 -n1 python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))'
+
+      # Renders every compose template; pulls nothing and starts nothing.
+      - name: Compose files render
+        run: ./scripts/check-compose.sh
+
+  lint:
+    name: Workflow and shell lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Downloaded release, checked against a hash recorded here. Bump both
+      # together when moving versions (the freshness audit does not see this).
+      - name: Install actionlint 1.7.12
+        run: |
+          set -euo pipefail
+          curl -fsSLO https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint_1.7.12_linux_amd64.tar.gz" | sha256sum -c -
+          tar -xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
+          echo "ACTIONLINT=$PWD/actionlint" >> "$GITHUB_ENV"
+
+      - name: actionlint on this repo's workflows and every shipped template
+        run: ./scripts/check-workflows.sh
+
+      # Advisory until each has had one clean run on main; then remove
+      # continue-on-error so a finding blocks the PR.
+      - name: shellcheck (advisory)
+        continue-on-error: true
+        run: git ls-files -z '*.sh' | xargs -0 shellcheck --severity=warning
+
+      - name: hadolint on the Dockerfile templates (advisory)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git ls-files -z '*Dockerfile*' | xargs -0 -n1 sh -c 'docker run --rm -i hadolint/hadolint:v2.15.1 < "$0"'
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # The same pinned scanner the security skill tells projects to use.
+      - name: gitleaks over the full history
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --redact --no-banner
+
+  terraform:
+    name: Terraform skill assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_wrapper: false
+
+      - name: Format, parity and validate every environment kind
+        run: ./scripts/check-terraform-assets.sh

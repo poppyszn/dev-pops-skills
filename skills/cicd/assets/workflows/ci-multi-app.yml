@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  # CI runs on pull requests only (plus manual runs). Deploys carry their own
+  # light pre-deploy gate and never call this workflow. Enforce CI by making
+  # this workflow's jobs required status checks on <INTEGRATION_BRANCH>.
+  pull_request:
+    branches: [<INTEGRATION_BRANCH>]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # One job per independent app: each has its own package.json and lockfile
+  # (no npm workspaces). Copy this job once per app and change the three
+  # <APP_DIR> markers.
+  <APP_NAME>:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: <APP_DIR>
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          # Per-app cache key: without this, setup-node looks for a root
+          # package-lock.json, which doesn't exist in this layout.
+          cache-dependency-path: <APP_DIR>/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      # Delete this step (don't leave it failing) if the app has no `test`
+      # script yet: `npm test` errors when the script doesn't exist.
+      - run: npm test
+
+      - run: npm run build

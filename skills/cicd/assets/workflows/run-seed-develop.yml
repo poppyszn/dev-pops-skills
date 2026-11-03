@@ -1,0 +1,129 @@
+# Manual, standalone "run the seed job" workflow — independent of a
+# deploy. Seeding (demo data, post-schema-change reseed) is typically an
+# occasional, deliberate operation, not something that should run on
+# every push; folding `seed` into a deploy workflow's compose-profiles
+# means it either runs on every deploy or not at all. This assumes a
+# normal deploy already put a current docker/develop/.env and image on
+# the target host — it does NOT git-sync the repo or rebuild/redeploy
+# anything, it only runs the one-shot seed job against what's already
+# there.
+#
+# Pull-based flow only (docker login + pull): if your project deploys by
+# building on the target host instead (see
+# deploy-develop-build-on-server.yml), drop the "docker login"/"docker
+# compose ... pull seed" lines below — the image is already local.
+
+name: Run seed job (develop)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: seed-develop
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read # docker login + pull from GHCR on the remote host
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    environment: develop
+    timeout-minutes: 10
+    env:
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      SSH_JUMP_HOST: ${{ secrets.SSH_JUMP_HOST }}
+      SSH_JUMP_USER: ${{ secrets.SSH_USER_JUMP }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      WORKING_DIR: ${{ secrets.WORKING_DIR }}
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_ACTOR: ${{ github.actor }}
+    steps:
+      - uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Configure SSH
+        run: |
+          # Host keys are pinned: SSH_KNOWN_HOSTS holds `ssh-keyscan` output and
+          # checking is strict, so nothing but the real host can answer.
+          if [ -z "$SSH_KNOWN_HOSTS" ]; then
+            echo "SSH_KNOWN_HOSTS is empty. Add the output of: ssh-keyscan -p <port> <host> (and the jump host, if any)" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          if [ -n "$SSH_JUMP_HOST" ]; then
+            cat >> ~/.ssh/config << EOF
+          Host $SSH_JUMP_HOST
+            StrictHostKeyChecking yes
+          Host $SSH_HOST
+            StrictHostKeyChecking yes
+            ProxyJump ${SSH_JUMP_USER}@${SSH_JUMP_HOST}
+          EOF
+          else
+            cat >> ~/.ssh/config << EOF
+          Host $SSH_HOST
+            StrictHostKeyChecking yes
+          EOF
+          fi
+          chmod 600 ~/.ssh/config
+
+      - name: Run seed job
+        run: |
+          # ${SSH_PORT:=22} guards against a caller passing an empty
+          # string (e.g. secrets.SSH_PORT never set) — ssh -p '' errors
+          # with "Bad port ''".
+          : "${SSH_PORT:=22}"
+
+          # Every value is printf '%q'-escaped before being spliced into
+          # the remote command string, never manually wrapped as
+          # VAR='$VAR' — see ssh-compose-deploy's README for why manual
+          # wrapping breaks the moment a value contains a single quote.
+          WORKING_DIR_Q=$(printf '%q' "$WORKING_DIR")
+          REPO_Q=$(printf '%q' "$REPO")
+          GH_TOKEN_Q=$(printf '%q' "$GH_TOKEN")
+          GH_ACTOR_Q=$(printf '%q' "$GH_ACTOR")
+
+          ssh -p "$SSH_PORT" "$SSH_TARGET" \
+            "WORKING_DIR=$WORKING_DIR_Q REPO=$REPO_Q GH_TOKEN=$GH_TOKEN_Q GH_ACTOR=$GH_ACTOR_Q bash -s" << 'EOF'
+          set -euo pipefail
+
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+
+          cd "${WORKING_DIR}/${REPO##*/}/docker/develop"
+
+          docker compose --env-file .env --profile seed pull seed
+
+          # < /dev/null matters: this whole script is delivered to the
+          # remote bash -s as one piped stdin stream over SSH. docker
+          # compose run attaches stdin by default, so without this it
+          # would consume the rest of the heredoc (the docker logout
+          # line below) as its own input before bash ever reads it —
+          # see the dev-pops cicd skill's references/gotchas.md.
+          docker compose --env-file .env --profile seed run --rm seed < /dev/null
+
+          docker logout ghcr.io
+          EOF
+
+      - name: Seed summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          GH_ACTOR_SUMMARY: ${{ github.actor }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "## Seed Report"
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Status | $JOB_STATUS |"
+            echo "| Triggered by | $GH_ACTOR_SUMMARY |"
+            echo "| Commit | $GIT_SHA |"
+          } >> "$GITHUB_STEP_SUMMARY"

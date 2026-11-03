@@ -1,0 +1,51 @@
+# Adapted from the dev-pops cicd skill's assets/workflows/ci-simple.yml
+# for an npm workspaces monorepo (3 apps, no Nx) — see that skill's
+# assets/workflows/ci.yml instead if this project uses
+# Nx and you want affected-only builds.
+
+name: CI
+
+on:
+  # CI runs on pull requests only (plus manual runs). Deploys carry their own
+  # light pre-deploy gate and never call this workflow. Enforce CI by making
+  # this workflow's jobs required status checks on develop.
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint --workspaces --if-present
+
+      - run: npm test --workspaces --if-present
+
+      - run: npm run build --workspaces --if-present
+
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build all application images
+        run: docker compose build api web admin

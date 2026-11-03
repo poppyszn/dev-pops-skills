@@ -1,0 +1,125 @@
+name: Seed production database
+
+# Manual only, deliberately no push trigger: seeding is never automatic. Runs
+# the api image's seed job (the compose `seed` profile) against the production
+# database. The seed service depends on `migrate`, so pending migrations run
+# first. The run refuses to start unless the confirm input is typed exactly.
+#
+# Assumes docker/production/.env and the repository checkout already exist on
+# the host from a prior deploy-production run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "production" to confirm seeding the production database'
+        required: true
+        type: string
+      image_tag:
+        description: "Image tag to seed with (a commit SHA, or latest-production)"
+        required: false
+        type: string
+        default: latest-production
+
+# Shared with deploy-production so a seed can never overlap a deploy.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    name: Seed production database
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read # docker login + pull from GHCR on the remote host
+    env:
+      CONFIRM: ${{ inputs.confirm }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_ACTOR: ${{ github.actor }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      WORKING_DIR: ${{ secrets.WORKING_DIR }}
+      REPO: ${{ github.repository }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      # || '22': an unset secret is an empty string, and `ssh -p ''` fails with "Bad port ''".
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+      SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      SSH_JUMP_HOST: ${{ secrets.SSH_JUMP_HOST }}
+      SSH_USER_JUMP: ${{ secrets.SSH_USER_JUMP }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Check confirmation
+        run: |
+          if [ "$CONFIRM" != "production" ]; then
+            echo "Refusing to seed: the confirm input must be exactly 'production'." >&2
+            exit 1
+          fi
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Configure SSH
+        run: |
+          if [ -z "$SSH_KNOWN_HOSTS" ]; then
+            echo "SSH_KNOWN_HOSTS is empty. Add the output of: ssh-keyscan -p <port> <host>" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          {
+            echo "Host ${SSH_HOST}"
+            echo "  StrictHostKeyChecking yes"
+            if [ -n "$SSH_JUMP_HOST" ]; then
+              echo "  ProxyJump ${SSH_USER_JUMP}@${SSH_JUMP_HOST}"
+            fi
+          } >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Run seed job
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_TARGET" \
+            GH_TOKEN="$(printf '%q' "$GH_TOKEN")" \
+            GH_ACTOR="$(printf '%q' "$GH_ACTOR")" \
+            IMAGE_TAG="$(printf '%q' "$IMAGE_TAG")" \
+            WORKING_DIR="$(printf '%q' "$WORKING_DIR")" \
+            REPO="$(printf '%q' "$REPO")" \
+            'bash -s' << 'EOF'
+          set -euo pipefail
+          # Log out however this script ends, so the credentials do not stay on the host.
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          cd "${WORKING_DIR}/${REPO##*/}/docker/production"
+          # Refuse to run against anything that is not declared production.
+          if ! grep -qE '^NODE_ENV=production[[:space:]]*$' .env; then
+            echo "Refusing to seed: docker/production/.env must declare NODE_ENV=production." >&2
+            exit 1
+          fi
+          export IMAGE_TAG
+          docker compose --env-file .env --profile seed pull seed
+          # < /dev/null is required: `docker compose run` reads stdin, and this
+          # script is itself the stdin. Without it the seed container eats the
+          # lines below and the step still passes.
+          docker compose --env-file .env --profile seed run --rm seed < /dev/null
+          echo "Seed finished."
+          EOF
+
+      - name: Seed summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          {
+            echo "## Production seed report"
+            echo "- **Status**: ${JOB_STATUS}"
+            echo "- **Image tag**: \`${IMAGE_TAG}\`"
+            echo "- **Triggered by**: ${ACTOR}"
+          } >> "$GITHUB_STEP_SUMMARY"

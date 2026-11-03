@@ -1,0 +1,69 @@
+# Production stack on a single Docker host behind nginx. Copy to
+# docker/production/compose.yml.
+#
+# - No database container: DATABASE_URL points at a managed Postgres.
+# - Pulls prebuilt images (never `build:`); the deploy sets IMAGE_TAG to the
+#   commit SHA, so what runs is an exact, retained image and a rollback is a
+#   redeploy of an older SHA. `latest-production` is only the fallback for a
+#   manual compose command on the host.
+# - Ports are published on 127.0.0.1 only. nginx on the same host is the one
+#   public entry point; nothing here is reachable from outside even if a
+#   security group rule is added by mistake.
+# - Secrets come from the host's .env, which the deploy never creates. Run
+#   preflight.sh against it before every deploy.
+#
+# For a public server-rendered app next to the api, add the `ssr` service from
+# references/node-api.md ("Production stack"): it must not use env_file.
+name: <PROJECT>-production
+
+services:
+  migrate:
+    image: ghcr.io/<GH_ORG>/<REPO>-api:${IMAGE_TAG:-latest-production}
+    command: migrate
+    restart: "no"
+    env_file:
+      - .env
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  # Opt-in: docker compose --profile seed run --rm seed. Never part of a deploy.
+  seed:
+    profiles: ["seed"]
+    image: ghcr.io/<GH_ORG>/<REPO>-api:${IMAGE_TAG:-latest-production}
+    command: seed
+    restart: "no"
+    env_file:
+      - .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  api:
+    image: ghcr.io/<GH_ORG>/<REPO>-api:${IMAGE_TAG:-latest-production}
+    command: start
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:${API_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M

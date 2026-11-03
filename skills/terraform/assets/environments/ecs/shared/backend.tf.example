@@ -1,0 +1,11 @@
+# Remote state with native S3 locking (no DynamoDB table needed).
+# Partial configuration: this file is identical in every environment. The
+# bucket, key and region live in each environment's backend.hcl (copy it from
+# backend.hcl.example), passed with `terraform init -backend-config=backend.hcl`.
+# Rename this file to backend.tf only once the state bucket exists.
+terraform {
+  backend "s3" {
+    use_lockfile = true
+    encrypt      = true
+  }
+}

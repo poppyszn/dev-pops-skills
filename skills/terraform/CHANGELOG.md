@@ -1,0 +1,20 @@
+# Changelog
+
+## 0.2.0 - 2026-11-01
+
+- **New: `static-site` template.** `static_site` module (private S3 bucket, origin access control, CloudFront distribution, a CloudFront Function for client-side routing, a security headers policy, versioning with a 30-day noncurrent tail) and `static_site_deploy_role` module (GitHub OIDC role scoped to the environment, with list/write/delete on the bucket and invalidation on the distribution), a `static-site` environment kind, and `references/static-site.md`. Built from a hand-made production setup after a review; the review's findings are recorded in the reference as the reasons behind each choice. Routing uses a function instead of 403/404 error responses so a missing `/assets/` file stays a 404.
+- **New: Docker host.** `docker_host_user_data` module (settings block + `docker-host.sh`: updates, fail2ban, swap, deploy user, key-only sshd, Docker Engine, nginx + certbot) and `references/docker-host.md`, including the first-boot runbook. Only the deploy key's public half is on the host. All input is validated (hostnames, ports, key format) because it is written into a script that runs as root.
+- **`ec2` module (additive, defaults unchanged):** `metadata_hop_limit` (1 or 2), `user_data` (ignored after create, because it only runs on first boot) and `elastic_ip`. **Fixes a gap in 0.1.0:** the hop limit was hard-coded to 1 and `ec2.md` said to keep it, which stops containers on a Docker host from reaching the instance role's credentials (AWS recommends 2 in container environments).
+- **`ec2` environment kind:** new `metadata_hop_limit`, `elastic_ip` and optional `docker_host` variables, set in all three `tfvars` to the previous behaviour. SSH remains off by default; `docker_host` is the documented exception.
+- The `ec2` and `static-site` kinds compose into one root (disjoint `site_*` names); `references/static-site.md` has the steps. Roadmap: deploy a Docker host over SSM instead of SSH.
+- Checked with Terraform 1.15.8 and `hashicorp/aws` 6.71.0: `fmt`, parity and `validate` for `ec2`, `ecs`, `static-site` and a composed root; `terraform test` against a mocked provider for both new modules and the `ec2` changes; the deploy role's rendered policies; the routing function run in Node (14 cases); and the user-data settings block executed in a sandbox with 10 hostile inputs rejected.
+- Not run: `terraform plan` or `apply` against a live account. The `minimum_protocol_version` values and the three-statement S3 permissions are marked `unverified` in `references/sources.md`.
+
+## 0.1.0 - 2026-11-01
+
+- Initial version. Built from two hand-written AWS projects (an EC2 instance, and ECS-on-EC2 behind an ALB with ECR and a GitHub OIDC deploy role) after a best-practice pass on both.
+- Standard layout with three identical environments (production, staging, development): only `terraform.tfvars` and `backend.hcl` differ, enforced by `check-env-parity.sh` (also checks tfvars against declared variables). Region is set visibly in every `terraform.tfvars`, with no default in `variables.tf`.
+- Modules shipped once under `assets/modules/`: `ec2`, `security_group`, `alb`, `ecr`, `ecs_cluster`, `ecs_instances`, `ecs_capacity_provider`, `ecs_service`, `ecs_task`, `github_oidc`. The `security_group` module is a single copy (the two source projects had drifted).
+- `references/module-standard.md` gives the module rules and the procedure for resources the templates do not cover (read the locked provider's docs and schema, write the module, wire it into all three environments).
+- Changes made to the source projects' code before it became assets: `required_version`, IMDSv2 and Session Manager on the EC2 module (SSH rule dropped), AMI from an SSM parameter, variable validations, S3 backend as partial configuration with native locking, lock-file hashes for five platforms, `actions/checkout` v7 in the deploy workflow.
+- Unverified: the Canonical Ubuntu 26.04 SSM parameter path (documented, not resolved against a live account), and `make help` (no `make` available when written).

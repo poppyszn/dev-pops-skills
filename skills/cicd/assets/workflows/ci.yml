@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  # CI runs on pull requests only (plus manual runs). Deploys carry their own
+  # light pre-deploy gate and never call this workflow. Enforce CI by making
+  # this workflow's jobs required status checks on <INTEGRATION_BRANCH>.
+  pull_request:
+    branches: [<INTEGRATION_BRANCH>]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read # nx-set-shas reads past workflow runs via the API
+  contents: read
+
+jobs:
+  affected:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - uses: nrwl/nx-set-shas@v5
+        with:
+          # Defaults to "main": must match the branch PRs target, or affected
+          # is computed against the wrong base.
+          main-branch-name: <INTEGRATION_BRANCH>
+
+      - run: npx nx affected -t lint,test,build --parallel=3
+
+      - name: Detect affected apps
+        id: detect
+        run: |
+          apps=$(npx nx show projects --affected --type=app --json)
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+    outputs:
+      apps: ${{ steps.detect.outputs.apps }}
+
+  e2e:
+    needs: affected
+    if: needs.affected.outputs.apps != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx nx affected -t e2e --parallel=1

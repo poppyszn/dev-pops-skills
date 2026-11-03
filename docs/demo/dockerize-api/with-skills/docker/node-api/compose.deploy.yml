@@ -1,0 +1,27 @@
+services:
+  migrate:
+    image: ghcr.io/<GH_ORG>/<REPO>-api:${IMAGE_TAG:-latest}
+    command: migrate
+    restart: "no"
+    env_file:
+      - ../../.env
+
+  api:
+    image: ghcr.io/<GH_ORG>/<REPO>-api:${IMAGE_TAG:-latest}
+    command: start
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # 127.0.0.1, not localhost: the image resolves localhost to ::1 first
+    # and Node binds IPv4, so the check fails against a healthy server and
+    # every `depends_on: condition: service_healthy` downstream stalls.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
