@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# (No shebang here on purpose: main.tf puts #!/bin/bash and the settings block in front of this file.)
 # Bootstrap for a single Docker host: security updates, fail2ban, swap, a deploy
 # user that GitHub Actions logs in as, hardened sshd, Docker Engine with the
 # Compose plugin, and nginx + certbot in front of the containers.

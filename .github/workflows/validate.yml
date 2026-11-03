@@ -90,21 +90,22 @@ jobs:
       - name: actionlint on this repo's workflows and every shipped template
         run: ./scripts/check-workflows.sh
 
-      # Advisory until each has had one clean run on main; then remove
-      # continue-on-error so a finding blocks the PR.
-      - name: shellcheck (advisory)
-        continue-on-error: true
-        run: git ls-files -z '*.sh' | xargs -0 shellcheck --severity=warning
+      # docs/demo/ holds recorded agent output (evidence, not templates), so
+      # both linters skip it. A deliberate exception is an inline
+      # `# shellcheck disable=` / `# hadolint ignore=` with the reason next to it.
+      - name: shellcheck
+        run: git ls-files -z '*.sh' ':!docs/demo/' | xargs -0 shellcheck --severity=warning
 
-      - name: hadolint on the Dockerfile templates (advisory)
-        continue-on-error: true
+      # Fails on warnings and errors; "info" notes (e.g. consolidate RUN lines)
+      # are printed but don't block.
+      - name: hadolint on the Dockerfile templates
         run: |
           set -uo pipefail
           status=0
           while IFS= read -r -d '' f; do
             echo "== $f"
-            docker run --rm -i hadolint/hadolint:v2.15.1 < "$f" || status=1
-          done < <(git ls-files -z '*Dockerfile*')
+            docker run --rm -i hadolint/hadolint:v2.15.1 hadolint --failure-threshold warning - < "$f" || status=1
+          done < <(git ls-files -z '*Dockerfile*' ':!docs/demo/')
           exit "$status"
 
   secrets:

@@ -40,6 +40,8 @@ EXPOSE 4000
 # IPv4 only — so a `localhost` healthcheck gets "connection refused"
 # against a perfectly healthy server and the container never leaves
 # "starting". Same failure already fixed in the frontend images.
+# Shell form on purpose: `|| exit 1` maps wget's failure codes to 1, the only "unhealthy" code.
+# hadolint ignore=DL3025
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
     CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:4000/health || exit 1
 ENTRYPOINT ["./entrypoint.sh"]
