@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-11-03
+
+- The "file gaps" step now says to leave out the client, project and repository names and describe the project's shape instead (standard §12 in skill-authoring).
+
 ## 0.2.0 - 2026-11-01
 
 - **New: `static-site` template.** `static_site` module (private S3 bucket, origin access control, CloudFront distribution, a CloudFront Function for client-side routing, a security headers policy, versioning with a 30-day noncurrent tail) and `static_site_deploy_role` module (GitHub OIDC role scoped to the environment, with list/write/delete on the bucket and invalidation on the distribution), a `static-site` environment kind, and `references/static-site.md`. Built from a hand-made production setup after a review; the review's findings are recorded in the reference as the reasons behind each choice. Routing uses a function instead of 403/404 error responses so a missing `/assets/` file stays a 404.

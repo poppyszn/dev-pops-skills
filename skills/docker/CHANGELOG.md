@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0 - 2026-11-03
+
+- The "file gaps" step now says to leave out the client, project and repository names and describe the project's shape instead (standard §12 in skill-authoring).
+
 ## 1.3.0 - 2026-11-01
 
 - **New: production stack** for a single Docker host behind nginx: `assets/node-api/compose.production.yml` (api, one-shot migrate, opt-in seed; ports on `127.0.0.1`; images run by `${IMAGE_TAG:-latest-production}`), `preflight.sh` (a blocking, testable check of the host `.env`) and `env.production.example`, documented in `references/node-api.md` with a paste-in `ssr` service for a server-rendered app. Built from a hand-made production setup after a review.

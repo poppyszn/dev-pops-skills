@@ -2,7 +2,7 @@
 name: terraform
 description: Use when writing, reviewing, or debugging Terraform for AWS: *.tf files, terraform.tfvars, .terraform.lock.hcl, modules/ or environments/ folders, terraform init/plan/apply/validate/fmt, provider-version or state-lock errors, or setting up production, staging and development environments for an EC2 instance (optionally a Docker host behind nginx deployed over SSH), a single-page app on S3 + CloudFront, or an ECS-on-EC2 service (ALB, ECR, capacity provider), with GitHub Actions OIDC deploy roles. Also covers writing a new hand-written module for an AWS resource the templates lack, remote S3 state, and drift between environments. Not for Dockerfiles or compose (use docker), CI workflows other than the ECS deploy template (use cicd), secret scanning or CVE scanning (use security), shell scripts (use scripting), or setting up a whole multi-app project (use project-infra).
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
   last-verified: "2026-11-01"
 ---
 
@@ -46,7 +46,7 @@ Apply these without asking. Deviate only if the project already does it differen
 6. **Beyond the examples.** For a resource, service or pattern with no template, follow the procedure in `references/module-standard.md`: look for an existing module, read the locked provider's docs, write a module to the standard, then wire it into **all three** environments identically.
 7. **Existing project (review or fix).** Compare it with the templates and the standard. Classify each difference as deliberate (leave it), drift (propose a fix), or uncovered. Report the list before editing. Never reshape state-bearing resources without confirmation.
 8. **Verify** (see Verification).
-9. **File gaps.** If a template is wrong or missing something, fix the project minimally and write a finding to the skills repo's `contributions/` folder (format in its `README.md`).
+9. **File gaps.** If a template is wrong or missing something, fix the project minimally and write a finding to the skills repo's `contributions/` folder (format in its `README.md`). Leave out the client, project and repository names; describe the project's shape instead ("a single-app NestJS API").
 
 ## Requires confirmation
 

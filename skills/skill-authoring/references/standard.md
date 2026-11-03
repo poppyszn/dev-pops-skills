@@ -123,9 +123,11 @@ Skills that ship templates (Dockerfiles, workflows, actions, config) put them in
 
 When a skill's template or guidance turns out wrong or missing in a real project, the agent fixes the project minimally **and** files a finding in the repo's `contributions/` folder (format in its `README.md`). It never quietly works around the gap.
 
+**Findings are anonymous.** A finding never names the client, the project, its repository or organisation, a person, a hostname or domain, or a local path. Describe the project's shape instead ("a single-app NestJS 11 + TypeORM API", "an Nx monorepo with four apps") and keep every technical detail. The same goes for anything copied out of a finding into a skill's `references/`, a changelog, a commit message or a pull request. `scripts/check-private-names.sh` enforces it in CI against the maintainer's private name list.
+
 Applying a finding happens in this repo, through the normal flow:
 
-1. Reproduce it.
+1. Check it names no client, project, repository or person (genericize it first if it does), then reproduce it.
 2. Check facts online.
 3. Fix the skill.
 4. Bump the version and add a changelog entry.

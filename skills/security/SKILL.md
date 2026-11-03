@@ -2,7 +2,7 @@
 name: security
 description: Use when adding or reviewing security scanning in CI (secret scanning with gitleaks, npm dependency audit, container image CVE scanning with Trivy, CodeQL static analysis as an opt-in), triaging scan failures or CVE findings, hardening a Dockerfile or GitHub Actions workflow (least-privilege permissions, pinned versions, script injection, secrets in env files), or handling secrets and credentials in infrastructure config. Not for general Dockerfile or compose authoring (use docker), general pipeline authoring or deploys (use cicd), or shell script correctness (use scripting).
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
   last-verified: "2026-09-26"
 ---
 
@@ -60,7 +60,7 @@ Apply these without asking. Deviate only if the project already does it differen
    - for a leaked secret, treat it as compromised: it must be **rotated**, not just deleted from the file
 5. **Reviewing config:** check against the Defaults. List each finding with its risk and a proposed fix before editing.
 6. **Verify** (see Verification).
-7. **File gaps** in the skills repo's `contributions/` folder (two levels above this skill's real path) when a template is wrong or missing.
+7. **File gaps** in the skills repo's `contributions/` folder (two levels above this skill's real path) when a template is wrong or missing. Leave out the client, project and repository names; describe the project's shape instead ("a single-app NestJS API").
 
 ## Requires confirmation
 

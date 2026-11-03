@@ -18,11 +18,10 @@ One file per finding (or a small cluster of related findings from the
 same debugging session, like `deploy-develop-ssh-heredoc-gotchas.md`
 below). Include:
 
-- **Where it was found** — which project, which template it was adapted
-  from (even loosely — "adapted from a client monorepo's
+- **Where it was found**: the *kind* of project and which template it was
+  adapted from (even loosely: "adapted from a client monorepo's
   deploy-develop.yml, not directly from this repo" is useful context).
-  Don't name private or client repositories in a finding; describe the
-  shape instead ("an Nx monorepo with four apps")
+  Never its name; see below.
 - **Whether it's a confirmed bug in this repo's own template today**, or
   something found in an adaptation/derivative that may or may not still
   apply here — say which, explicitly, per finding if a file covers more
@@ -32,6 +31,22 @@ below). Include:
   quickly than a description of symptoms.
 - **A suggested fix**, if you have one — but don't apply it directly to
   the template files themselves.
+
+## Never name the project
+
+This repo is public. A finding describes the project's shape, never its
+identity:
+
+| Write | Not |
+|---|---|
+| a single-app NestJS 11 + TypeORM API | `acme-corp/orders-backend` |
+| an Nx monorepo with four apps, deployed over SSH | "the client's ERP" |
+| the project's `apps/store` | `/Users/<you>/clients/acme/...` |
+
+Leave out client, project, repository and organisation names, people,
+hostnames, domains and local paths. Keep every technical detail: versions,
+file paths inside the project, commands, error messages. Before filing,
+run `./scripts/check-private-names.sh` from this repo; CI runs it too.
 
 ## What happens to a finding
 

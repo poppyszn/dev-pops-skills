@@ -33,7 +33,7 @@ The skills cross-reference each other (docker, cicd, security, scripting; `proje
 
 Other repo-level folders:
 
-- `contributions/`: gap findings filed by agents that hit a template problem in another project. Apply them via skill-authoring's "Apply a finding" flow. Open findings sit directly in the folder; applied ones are moved to `contributions/completed/` and are closed records.
+- `contributions/`: gap findings filed by agents that hit a template problem in another project. **A finding never names the client, project or repository**; it describes the project's shape (`skills/skill-authoring/references/standard.md` §12). Apply them via skill-authoring's "Apply a finding" flow. Open findings sit directly in the folder; applied ones are moved to `contributions/completed/` and are closed records.
 - `evals/`: the trigger dataset (`triggers.json`: which skill each prompt should load) and the mechanical checklist used by the before/after in `docs/demo/`. Add a prompt here whenever a skill's description changes or an agent picks the wrong skill.
 - `roadmap.md`: planned templates and pending decisions. Nothing listed there exists yet.
 - `docs/history/`: design rationale from the old templates repo. Read it for *why*, but its paths are outdated.
@@ -73,6 +73,7 @@ This does not relax `skill-authoring`'s rule that an agent shows the diff rather
 ./scripts/export-portable.sh --check <file> # detect drift in a copy pasted elsewhere
 ./scripts/eval-triggers.sh --lint          # trigger dataset is well-formed (CI); --run needs a logged-in CLI
 ./scripts/check-links.sh                   # internal links and referenced paths exist
+./scripts/check-private-names.sh           # no client/project names or home paths (uses a local, gitignored .private-names)
 ./scripts/check-compose.sh                 # docker compose config -q on every compose template
 ACTIONLINT=$(which actionlint) ./scripts/check-workflows.sh   # actionlint over every workflow template
 ./scripts/freshness-audit.sh               # the weekly pin/tag check, runnable locally

@@ -1,0 +1,2 @@
+# Local only (gitignored): private names the check must never find in this repo.
+.private-names

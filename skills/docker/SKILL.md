@@ -2,7 +2,7 @@
 name: docker
 description: Use when writing, reviewing, or debugging a Dockerfile, .dockerignore, compose.yaml / docker-compose.yml, or container entrypoint script, or when dockerizing a Node/TypeScript API, static SPA (Vite/CRA behind nginx), Next.js app, or Nitro SSR server. Also covers a production compose stack for a single Docker host behind nginx (loopback ports, images run by commit SHA, a preflight on the host `.env`), local S3 object storage for dev and tests (Adobe S3Mock, replacing MinIO), runtime env injection into frontend images, image size and layer caching, healthchecks, and container runtime issues such as crash loops, unreachable ports, or permission errors. Not for CI workflows or deploy pipelines (use cicd), image vulnerability scanning or secrets handling (use security), setting up a whole multi-app project (use project-infra), or general shell scripting (use scripting).
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   last-verified: "2026-09-26"
 ---
 
@@ -53,7 +53,7 @@ Apply these without asking. Deviate only if the project already does it differen
 4. **Check pins are current.** For each `FROM` / `image:` tag, confirm the tag exists and is a supported release (search the web or query the registry). Use a newer supported tag if the template's is stale, and file the stale pin as a gap (step 7).
 5. **For an existing file (review/fix):** compare it against the template and `references/compose.md`. Classify each difference as a deliberate customization (leave it), drift from the rules (propose a fix), or something no template covers. MinIO counts as drift: propose the S3Mock swap. Report the list before editing.
 6. **Verify** (see Verification).
-7. **File gaps, don't route around them.** If a template doesn't fit or is wrong, apply the minimal fix in the project, then write a finding to the skills repo's `contributions/` folder (two levels above this skill's real path; format in its `README.md`).
+7. **File gaps, don't route around them.** If a template doesn't fit or is wrong, apply the minimal fix in the project, then write a finding to the skills repo's `contributions/` folder (two levels above this skill's real path; format in its `README.md`). Leave out the client, project and repository names; describe the project's shape instead ("a single-app NestJS API").
 
 ## Requires confirmation
 
