@@ -5,7 +5,7 @@
 # list before reading the score.
 set -uo pipefail
 dir=${1:?usage: check-dockerize.sh <project-dir>}
-cd "$dir"
+cd "$dir" || exit 2
 
 dockerfiles=$(find . -name 'Dockerfile*' -not -path './node_modules/*' | sort)
 composes=$(find . \( -name 'compose*.yml' -o -name 'compose*.yaml' -o -name 'docker-compose*.yml' \) -not -path './node_modules/*' | sort)
@@ -16,7 +16,7 @@ check() { # name, result(0=pass)
   total=$((total+1))
   if [ "$2" -eq 0 ]; then pass=$((pass+1)); printf '  PASS  %s\n' "$1"; else printf '  FAIL  %s\n' "$1"; fi
 }
-has() { local pat=$1; shift; grep -qE "$pat" $* 2>/dev/null; }
+has() { local pat=$1; shift; grep -qE "$pat" "$@" 2>/dev/null; }
 
 [ "$dockerfiles" != /dev/null ]; check "a Dockerfile exists" $?
 # every FROM names an explicit tag that is not latest (build-stage aliases excluded)

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1 - 2026-11-03
+
+- The `HEALTHCHECK` in `node-api`, `frontend-spa-nginx` and `frontend-nextjs` carries `# hadolint ignore=DL3025` with the reason: shell form is needed so `|| exit 1` turns wget's failure codes into 1, Docker's only "unhealthy" code. hadolint now blocks in this repo's CI.
+
 ## 1.4.0 - 2026-11-03
 
 - The "file gaps" step now says to leave out the client, project and repository names and describe the project's shape instead (standard §12 in skill-authoring).

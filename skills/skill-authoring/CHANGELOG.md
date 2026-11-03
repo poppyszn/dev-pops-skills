@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 - 2026-11-03
+
+- `scripts/export-portable.sh`: removed an unused `name` variable (shellcheck SC2034). No change in output.
+
 ## 0.5.0 - 2026-11-03
 
 - New rule, standard §12: **findings are anonymous**. A finding never names the client, project, repository, organisation, a person, a hostname, domain or local path; it describes the project's shape and keeps every technical detail. The same applies to anything copied from a finding into a skill, changelog, commit or PR. "Apply a finding" now starts by genericizing, and Verification runs `scripts/check-private-names.sh`.

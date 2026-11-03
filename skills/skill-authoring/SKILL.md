@@ -2,7 +2,7 @@
 name: skill-authoring
 description: Use when creating, editing, reviewing, splitting, renaming, or auditing an agent skill (a SKILL.md folder) or the structure of this skills repo, including when asked to "make a skill for X", "update the docker skill", "check the skills are up to date", "apply the contributions", or when the skill validator or the freshness-audit issue reports failures, drift, or stale skills. Not for carrying out the domain work a skill describes (use that skill, e.g. docker or cicd).
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
   last-verified: "2026-09-26"
 ---
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 - 2026-11-03
+
+- `docker-host.sh` starts with a `# shellcheck shell=bash` directive. It has no shebang on purpose (the module puts `#!/bin/bash` and the settings block in front of it), so shellcheck needs the shell named. shellcheck now blocks in this repo's CI.
+
 ## 0.4.0 - 2026-11-03
 
 - **Providers download once per machine, not once per environment.** The project `Makefile` sets `TF_PLUGIN_CACHE_DIR` (default `~/.terraform.d/plugin-cache`, created if missing; an existing value wins). Terraform only uses a cached package that matches a lock-file checksum, so this stays safe with the committed lock files.

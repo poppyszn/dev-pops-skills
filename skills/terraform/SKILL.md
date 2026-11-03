@@ -2,7 +2,7 @@
 name: terraform
 description: Use when writing, reviewing, or debugging Terraform for AWS (*.tf, tfvars, lock files, modules/ and environments/ folders, init/plan/apply or state-lock errors, drift between environments), including an EC2 instance or Docker host, a single-page app on S3 + CloudFront, or an ECS-on-EC2 service behind an ALB, with GitHub OIDC deploy roles and identical production, staging and development environments. Also for a new hand-written module for an AWS resource the templates lack. Not for Dockerfiles or compose (use docker), other CI workflows (use cicd), scanning or secrets (use security), shell scripts (use scripting), or whole-project setup (use project-infra).
 metadata:
-  version: "0.4.0"
+  version: "0.4.1"
   last-verified: "2026-11-01"
 ---
 

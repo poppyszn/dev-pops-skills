@@ -23,6 +23,8 @@ RUN chmod +x /entrypoint.sh
 COPY --from=build /app/apps/admin/dist /usr/share/nginx/html
 # 127.0.0.1, not localhost: nginx's `listen 80;` only binds IPv4 by
 # default, but this base image resolves "localhost" to ::1 (IPv6) first.
+# Shell form on purpose: `|| exit 1` maps wget's failure codes to 1, the only "unhealthy" code.
+# hadolint ignore=DL3025
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/healthz || exit 1
 ENTRYPOINT ["/entrypoint.sh"]

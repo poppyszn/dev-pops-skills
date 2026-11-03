@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.1 - 2026-11-03
+
+- The example's `apps/api`, `apps/admin` and `apps/web` `HEALTHCHECK` lines carry the same `# hadolint ignore=DL3025` and reason as the docker templates they were adapted from.
+
 ## 3.1.0 - 2026-11-03
 
 - The "file gaps" step now says to leave out the client, project and repository names and describe the project's shape instead (standard §12 in skill-authoring).

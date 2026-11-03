@@ -29,13 +29,12 @@ fm_value() {
 flag_terms='skill tool|slash command|\B/loop\b|claude artifact'
 
 render() {
-  local dir="${1%/}" skill file frontmatter name desc version verified body ref
+  local dir="${1%/}" skill file frontmatter desc version verified body ref
   skill="$(basename "$dir")"
   file="$dir/SKILL.md"
   [[ -f "$file" ]] || { echo "no SKILL.md in $dir" >&2; return 1; }
 
   frontmatter="$(awk 'NR==1{next} /^---$/{exit} {print}' "$file")"
-  name="$(fm_value "$frontmatter" name)"
   desc="$(fm_value "$frontmatter" description)"
   version="$(fm_value "$frontmatter" '[[:space:]]+version')"
   verified="$(fm_value "$frontmatter" '[[:space:]]+last-verified')"

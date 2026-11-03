@@ -49,6 +49,8 @@ EXPOSE 3000
 # 127.0.0.1, not localhost: even with HOSTNAME=0.0.0.0 above, Node binds
 # IPv4 only here — this base image resolves "localhost" to ::1 (IPv6)
 # first, so wget hits "Connection refused" against a healthy server.
+# Shell form on purpose: `|| exit 1` maps wget's failure codes to 1, the only "unhealthy" code.
+# hadolint ignore=DL3025
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
     CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/ || exit 1
 ENTRYPOINT ["./entrypoint.sh"]
