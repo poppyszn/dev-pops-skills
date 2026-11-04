@@ -80,3 +80,47 @@ Decided 2026-11-01 while reviewing a hand-built production pipeline (see `deploy
 - **A reusable workflow builds the commit that triggered the run, whatever the caller asked for.** `docker-build-push.yml` takes an optional `ref` input now; a caller that deploys a chosen commit must pass it, or the image is built from, and tagged with, the wrong commit.
 - **A job that assumes an AWS role needs `id-token: write`, and a job-level `permissions:` block replaces the top-level one.** List `contents: read` beside it.
 - **A distribution-wide 403/404-to-`index.html` rule hides real errors.** The web smoke test requests a file that cannot exist under `/assets/` and expects 404 for that reason. The Terraform static-site template uses a routing function instead.
+
+## The default `run:` shell has no `pipefail`
+
+A step without `shell:` runs `bash -e {0}` on Linux and macOS: `-e`, but no `pipefail`. Only `shell: bash` gets `bash --noprofile --norc -eo pipefail {0}`. So in `services=$(detect.sh | paste -sd ' ' -)` a failing `detect.sh` is invisible: the pipeline's status is `paste`'s, `services` is empty, and the deploy reports "nothing changed" and passes. Caught in review of a push-triggered deploy, before it shipped. Either set `shell: bash` (or `defaults.run.shell: bash`), or don't pipe a command whose failure matters: `out=$(detect.sh)` exits under `-e` when `detect.sh` fails, then reshape `out` on the next line. Test the failure path, not just the happy one: replace the script with `exit 1` and check the step fails.
+
+## On `pull_request`, `GITHUB_SHA` is a merge commit
+
+It is the last merge commit of `refs/pull/<n>/merge`, which exists nowhere in the PR's history. Anything that shows or links "the commit checked" (a summary, a status message, an image tag) should use `github.event.pull_request.head.sha`. Shipped once: every PR-check summary named a commit nobody could find.
+
+## Caches: base-branch scope, 7-day eviction, and gzip vs zstd
+
+Details in `references/pr-checks.md`, "Caching dependencies". In short: a PR restores only caches from its own branch, its base or the default branch, so save shared caches from the integration branch; an entry nobody restores for 7 days is evicted, so warm it on a `schedule` (which runs on the default branch); and a runner without `zstd` saves and restores gzip entries, which are a different cache version from a zstd runner's, so self-hosted and hosted runners never share an entry. Shipped once: PR checks moved to self-hosted runners kept missing a cache that a hosted runner had warmed, because the self-hosted image had no zstd.
+
+## Hosted runners for private repositories are half the size
+
+The standard `ubuntu-latest` runner has 4 CPUs and 16 GB for a public repository, but 2 CPUs and 8 GB for a private one. Size build parallelism (`max-parallelism`, `CHECKS_PARALLEL`, Jest `--maxWorkers`) for 2 CPUs unless the repository is public or uses larger runners. On a private repository in a free organization, the branch protection API answered 403, so required status checks could not be set: check the plan before listing that setting as a step for the user.
+
+## A push deploy must diff the whole push
+
+`git diff HEAD^ HEAD` sees only the last commit of a push. When a push carries several commits (a merge without squash, a rebase pushed at once), an app changed in an earlier commit is never rebuilt or deployed. Diff `github.event.before` to `github.sha` with `fetch-depth: 0`, and deploy everything when `before` is all zeros (a new branch) or no longer exists (a force-push). Template: `references/docker-bake.md`, "Deploying only what a push changed".
+
+## A push that matches `paths-ignore: .github/**` deploys nothing
+
+Deploy workflows ignore workflow-only changes so editing CI doesn't redeploy. The flip side: merging a fix to the deploy workflow itself, or a change that only touches `.github/`, never runs it. Say so in the PR and run the workflow by hand after merging. Two push-triggered deploy workflows on the same branch (an old one beside its replacement) also both run on every push and collide on the host: retire the old one in the same change that adds the push trigger.
+
+## Seeds run on request, not on every deploy
+
+A deploy that re-runs seeds on every push rewrites reference data each time, and a seed bug fails every deploy after it. Shipped once: a broken seed blocked every deploy of one service until it was fixed, though the change being deployed had nothing to do with seeds. Run migrations on every deploy; give seeds their own workflow (`run-seed-develop.yml`, `seed-production.yml`) or a `workflow_dispatch` boolean input that defaults to false:
+```yaml
+run_seeds:
+  description: 'Also run the seeds after migrating'
+  type: boolean
+  default: false
+```
+Read it through `env:` (`RUN_SEEDS: ${{ github.event.inputs.run_seeds == 'true' }}`), never inline in the script.
+
+## Quote a `name:` that contains `: `
+
+`name: CI: PR checks` is invalid YAML (a mapping value inside a plain scalar). Shipped once: renaming eight workflows into `<Group>: <name>` broke every one of them until each value was quoted. Write `name: "CI: PR checks"`. Grouping names by environment (`CI: …`, `Testing: …`, `Production: …`) keeps the Actions sidebar sorted; the file names can stay as they are.
+
+## No `${{ }}` in a `run:` body, comments included
+
+GitHub evaluates expressions anywhere in a `run:` body before the shell sees it, so a `#` comment does not hide one. In a composite action the `secrets` context does not exist, so a comment mentioning `${{ secrets.SSH_PORT }}` stops the action loading ("Unrecognized named-value: 'secrets'") and the calling job fails before any step runs. An `${{ inputs.x }}` in a comment loads, but pastes the input into the script source, which is the injection pattern. Shipped in both composite actions until 3.2.1; found by a project that copied them. Write "the SSH_PORT secret", not the expression. actionlint does not read `action.yml`, so this repo's CI runs `scripts/check-run-expressions.sh` over workflows and actions.
+

@@ -108,7 +108,7 @@ runs:
         # (a value containing a single quote breaks out of that quoting).
         #
         # ${SSH_PORT:=22} guards against a caller passing an empty string
-        # (e.g. ${{ secrets.SSH_PORT }} when that secret was never set) —
+        # (for example a caller's SSH_PORT secret that was never set) —
         # an explicitly empty input overrides this action's own `default:
         # '22'` in action.yml, since GitHub Actions only applies an
         # input's default when the input is omitted entirely, not when
