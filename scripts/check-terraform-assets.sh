@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds a scratch project from the terraform skill's assets, once per template
 # (ec2, ecs, static-site), and runs what a scaffolded project runs: terraform fmt -check, the
-# environment parity check, and terraform validate in every environment.
+# environment parity check, and terraform validate in every environment. Then
+# validates every module on its own, including ones no environment kind uses.
 # Needs terraform on PATH and network access to download the aws provider.
 # Skips cleanly when the terraform skill is not in this checkout.
 set -euo pipefail
@@ -39,4 +40,17 @@ for kind in ec2 ecs static-site; do
     terraform -chdir="$dir" init -backend=false -input=false >/dev/null
     terraform -chdir="$dir" validate
   done
+done
+
+# Every module on its own as well, because a module no environment kind uses
+# (rds_postgres, state_bucket, github_actions_role) is never validated above.
+# Reuses the provider the first environment downloaded instead of fetching it
+# again per module.
+plugins="$(find "$work" -type d -path '*/.terraform/providers' | head -1)"
+for mod in "$assets/modules/"*/; do
+  name="$(basename "$mod")"
+  echo "== module: $name"
+  cp -r "$mod" "$work/module-$name"
+  terraform -chdir="$work/module-$name" init -backend=false -input=false -plugin-dir="$plugins" >/dev/null
+  terraform -chdir="$work/module-$name" validate
 done
