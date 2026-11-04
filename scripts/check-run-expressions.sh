@@ -11,7 +11,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 git ls-files -z '*.yml' '*.yaml' | python3 -c '
 import sys, yaml
-files = [f for f in sys.stdin.read().split("\0") if f and ("/workflows/" in f or "/actions/" in f or "github-actions/" in f) and not f.startswith("evals/workspaces/")]
+files = [f for f in sys.stdin.read().split("\0") if f and ("workflows/" in f or "/actions/" in f or "github-actions/" in f) and not f.startswith("evals/workspaces/")]
 def runs(node):
     if isinstance(node, dict):
         for k, v in node.items():
