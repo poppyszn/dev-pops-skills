@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.1 - 2026-11-04
+
+- **Fix: both composite actions failed to load.** `git-sync-deploy` and `ssh-compose-deploy` had `${{ secrets.SSH_PORT }}` inside a shell comment in a `run:` body. GitHub evaluates expressions in comments too, and the `secrets` context does not exist in a composite action, so every job using either action failed before its first step. `ssh-compose-deploy` also had `${{ inputs.ssh-host }}` in a comment, which pasted the input into the script source. All three comments are reworded; the project-infra copies are re-copied.
+- Verification now reads `run:` bodies in `.github/actions/*/action.yml` as well as workflows, comments included, and `references/gotchas.md` has the case.
+- Applied `contributions/completed/composite-actions-expression-in-run-comment.merged.md`.
+- Checked: a scan of every `run:` body the skills ship finds no expression; the same scan on the previous version flags all six lines.
+
 ## 3.2.0 - 2026-11-04
 
 - **New: single-job PR checks** (`assets/workflows/pr-checks.yml`, `assets/scripts/run-pr-checks.sh`, `assets/scripts/detect-affected.sh`, `references/pr-checks.md`), from a monorepo's pipeline that replaced a per-app matrix: one runner checks every affected app several at a time and posts one PR comment (updated in place) with a pass/fail table and the end of each failing log. The comment step has `continue-on-error` so only the checks decide the result, and the summary shows `pull_request.head.sha`, not the merge commit.

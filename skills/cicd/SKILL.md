@@ -2,7 +2,7 @@
 name: cicd
 description: Use when creating, modifying, or debugging CI/CD pipelines in GitHub Actions (.github/workflows/*.yml, .github/actions/*/action.yml), including lint/test/build CI for Node repos (single package, several independent apps, or Nx/npm-workspaces monorepos), single-job PR checks with a PR comment summary, building and pushing Docker images to GHCR (one image, or several in one Docker Bake job), deploying a compose stack to a server over SSH (registry pull or build-on-server), running seed/migration jobs against a deployed environment, production deploys (web to S3 + CloudFront, servers to a Docker host over SSH, with preflight, migrate-then-restart and SHA-pinned rollback), and failing, slow, or flaky pipeline runs. Not for writing Dockerfiles or compose files (use docker), security scanning workflows, secrets, or token hardening (use security), or setting up a whole multi-app project at once (use project-infra).
 metadata:
-  version: "3.2.0"
+  version: "3.2.1"
   last-verified: "2026-11-01"
 ---
 
@@ -74,7 +74,7 @@ Run these and report the actual output before calling the work done:
 - YAML parses: `python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" <file>` for every workflow/action touched
 - `actionlint` if installed (catches expression and shell errors YAML parsing can't)
 - Every `uses:` ref exists (step 4)
-- Read every `run:` body and confirm it contains no `${{ }}`. All such values must arrive through `env:`.
+- Read every `run:` body, in workflows and in `.github/actions/*/action.yml`, and confirm it contains no `${{ }}`, comments included. All such values must arrive through `env:`.
 - `diff` each vendored or verbatim file against its asset. Every difference must be a documented substitution.
 - Shell assets (`run-pr-checks.sh`, `detect-affected.sh`): `bash -n` and `shellcheck`, then run `detect-affected.sh` against a real base ref, and make one check fail on purpose to see the summary and a non-zero exit
 - Bake: `docker buildx bake -f docker-bake.hcl --print` resolves every app, and one app builds locally

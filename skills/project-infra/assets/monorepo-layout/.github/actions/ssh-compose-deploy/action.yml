@@ -60,7 +60,7 @@ runs:
         # Host keys are pinned: SSH_KNOWN_HOSTS holds `ssh-keyscan` output and
         # checking is strict, so nothing but the real host can answer.
         #
-        # Inputs are read from env vars ($SSH_HOST, not ${{ inputs.ssh-host }})
+        # Inputs are read from env vars ($SSH_HOST), never as inline expressions,
         # so nothing gets spliced directly into this script's source — see
         # this action's README, "Inputs are always passed through env:".
         if [ -z "$SSH_KNOWN_HOSTS" ]; then
@@ -106,7 +106,7 @@ runs:
         # regardless of quotes, spaces, $(), backticks, or semicolons in it.
         #
         # ${SSH_PORT:=22} guards against a caller passing an empty string
-        # (e.g. ${{ secrets.SSH_PORT }} when that secret was never set) —
+        # (for example a caller's SSH_PORT secret that was never set) —
         # an explicitly empty input overrides this action's own `default:
         # '22'` in action.yml, since GitHub Actions only applies an
         # input's default when the input is omitted entirely, not when

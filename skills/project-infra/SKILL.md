@@ -2,7 +2,7 @@
 name: project-infra
 description: Use when setting up the infrastructure for a whole project at once, meaning several pieces wired together (Dockerfiles for multiple apps, compose stacks, CI, image builds, and deploy pipelines in one repo, often an npm-workspaces monorepo), or when auditing a repo's existing infra files as a set against the templates. Phrases like "set up this project's Docker and CI/CD", "dockerize and deploy this monorepo", or "check our infra against the templates". Not for a single Dockerfile or compose change (use docker), a single workflow (use cicd), or security scanning alone (use security).
 metadata:
-  version: "3.1.2"
+  version: "3.1.3"
   last-verified: "2026-09-26"
 ---
 

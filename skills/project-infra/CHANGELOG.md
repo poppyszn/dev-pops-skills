@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.3 - 2026-11-04
+
+- Re-copied the vendored `git-sync-deploy` and `ssh-compose-deploy` actions from cicd 3.2.1. The previous copies failed to load in any job (a `secrets` expression inside a comment).
+
 ## 3.1.2 - 2026-11-04
 
 - Re-copied the vendored `.github/workflows/docker-build-push.yml` from the cicd skill (3.2.0), which no longer names a real repository and owner in a comment.

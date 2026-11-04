@@ -119,3 +119,8 @@ Read it through `env:` (`RUN_SEEDS: ${{ github.event.inputs.run_seeds == 'true' 
 ## Quote a `name:` that contains `: `
 
 `name: CI: PR checks` is invalid YAML (a mapping value inside a plain scalar). Shipped once: renaming eight workflows into `<Group>: <name>` broke every one of them until each value was quoted. Write `name: "CI: PR checks"`. Grouping names by environment (`CI: …`, `Testing: …`, `Production: …`) keeps the Actions sidebar sorted; the file names can stay as they are.
+
+## No `${{ }}` in a `run:` body, comments included
+
+GitHub evaluates expressions anywhere in a `run:` body before the shell sees it, so a `#` comment does not hide one. In a composite action the `secrets` context does not exist, so a comment mentioning `${{ secrets.SSH_PORT }}` stops the action loading ("Unrecognized named-value: 'secrets'") and the calling job fails before any step runs. An `${{ inputs.x }}` in a comment loads, but pastes the input into the script source, which is the injection pattern. Shipped in both composite actions until 3.2.1; found by a project that copied them. Write "the SSH_PORT secret", not the expression. actionlint does not read `action.yml`, so this repo's CI runs `scripts/check-run-expressions.sh` over workflows and actions.
+
