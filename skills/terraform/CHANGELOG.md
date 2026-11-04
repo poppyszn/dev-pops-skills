@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 - 2026-11-04
+
+- **Terraform pipeline template.** New `state_bucket` module (adopt an existing state bucket with `import` blocks, policy ARN built from the name so the plan is clean), `github_actions_role` module (OIDC role with validated subjects, reused for a read-only PR plan role and a no-IAM-write apply role) and `terraform-plan.yml` / `terraform-apply.yml` workflows, documented in `references/terraform-pipeline.md`. Includes the pre-checks that mattered in use: which account owns the bucket, an existing account-wide GitHub OIDC provider (look it up, never create), the repository's real `sub` format, whether the GitHub environment has any protection rules, and `aws-vault --no-session` for IAM.
+- **`rds_postgres` module updated** from a real deployment: `publicly_accessible` (default false), `rotate_master_user_password` (off via `aws_secretsmanager_secret_rotation`, the provider's documented method), and the `ignore_changes` removal kept. `references/rds-postgres.md` now covers the rotation switch, the TLS default (`rds.force_ssl` is on from PostgreSQL 15), opening 5432 only on request, and how to price it from the AWS Price List API instead of from memory.
+- Facts, doc URLs and dates added to `references/sources.md`.
+
+## 0.5.0 - 2026-11-04
+
+- **New `rds_postgres` module and `references/rds-postgres.md`.** One PostgreSQL instance (default `db.t4g.micro`, gp3, encrypted, not public, master password in Secrets Manager) with its subnet group, wired next to the `security_group` module in the default VPC. Written from the provider's docs and schema for 6.71.0; facts recorded in `references/sources.md`.
+- **Docs before code is now explicit and sequenced.** A run building this module wrote the resource from memory and only afterwards checked the docs, which turned up an `ignore_changes = [engine_version]` that would have blocked a deliberate major upgrade. The default and the module-standard procedure now say: read the docs and dump the schema before writing, and a passing `plan` does not count as verification.
+- Module-standard step 2 notes that the registry's resource pages return nothing to a plain fetch (read the provider's GitHub docs at the version tag instead) and that the schema dump needs a scratch folder, because an environment bound to the remote backend makes `init -backend=false` fail.
+- New defaults: module labels in an environment's `main.tf` name the purpose (`billing_postgres_db`), with matching helper and output prefixes; fewer than three environments only when the user asks, in which case `make parity` is dropped.
+- Inspect step: check the repository-root `.gitignore` for rules that exclude `*.tfvars` or the lock file, and confirm which AWS account the credentials (profile or `aws-vault`) point at before `init` or `plan`.
+
 ## 0.4.1 - 2026-11-03
 
 - `docker-host.sh` starts with a `# shellcheck shell=bash` directive. It has no shebang on purpose (the module puts `#!/bin/bash` and the settings block in front of it), so shellcheck needs the shell named. shellcheck now blocks in this repo's CI.

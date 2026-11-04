@@ -1,0 +1,52 @@
+name: Terraform apply
+
+# Runs when Terraform changes land on main. The job uses the `<GITHUB_ENVIRONMENT>` GitHub
+# environment, so its protection rules (required reviewers) gate the apply and
+# the AWS role only trusts jobs that run in that environment.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-<ENVIRONMENT>
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: <GITHUB_ENVIRONMENT>
+    defaults:
+      run:
+        working-directory: terraform/environments/<ENVIRONMENT>
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: <TERRAFORM_VERSION>
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: <APPLY_ROLE_ARN>
+          aws-region: <REGION>
+
+      - name: Init
+        run: terraform init -input=false -backend-config=backend.hcl
+
+      - name: Plan
+        run: terraform plan -input=false -lock-timeout=5m -var-file=terraform.tfvars -out=tfplan
+
+      # Applies exactly the plan made above, so nothing changes between the two steps.
+      - name: Apply
+        run: terraform apply -input=false -lock-timeout=5m tfplan

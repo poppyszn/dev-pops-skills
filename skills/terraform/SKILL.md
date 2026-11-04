@@ -1,9 +1,9 @@
 ---
 name: terraform
-description: Use when writing, reviewing, or debugging Terraform for AWS (*.tf, tfvars, lock files, modules/ and environments/ folders, init/plan/apply or state-lock errors, drift between environments), including an EC2 instance or Docker host, a single-page app on S3 + CloudFront, or an ECS-on-EC2 service behind an ALB, with GitHub OIDC deploy roles and identical production, staging and development environments. Also for a new hand-written module for an AWS resource the templates lack. Not for Dockerfiles or compose (use docker), other CI workflows (use cicd), scanning or secrets (use security), shell scripts (use scripting), or whole-project setup (use project-infra).
+description: Use when writing, reviewing, or debugging Terraform for AWS (*.tf, tfvars, lock files, modules/ and environments/ folders, init/plan/apply or state-lock errors, drift between environments), including an EC2 instance or Docker host, an RDS PostgreSQL database, a single-page app on S3 + CloudFront, or an ECS-on-EC2 service behind an ALB, with GitHub OIDC deploy roles, a Terraform plan/apply pipeline and identical production, staging and development environments. Also for a new hand-written module for an AWS resource the templates lack. Not for Dockerfiles or compose (use docker), other CI workflows (use cicd), scanning or secrets (use security), shell scripts (use scripting), or whole-project setup (use project-infra).
 metadata:
-  version: "0.4.1"
-  last-verified: "2026-11-01"
+  version: "0.6.0"
+  last-verified: "2026-11-04"
 ---
 
 # Terraform
@@ -32,16 +32,18 @@ Apply these without asking. Deviate only if the project already does it differen
 - **One AWS account for all environments** unless the project says otherwise. Names carry the environment (`<PROJECT>-<env>-…`). The GitHub OIDC provider is an account singleton: exactly one environment creates it.
 - **Lock file committed** with hashes for every platform, identical in every environment (`make lock` writes it once and copies it). Providers download once into a shared plugin cache. State, plans and `.terraform/` are never committed (`gitignore` asset).
 - **Remote state:** S3 with native locking (`use_lockfile`), configured through a per-environment `backend.hcl` so the `.tf` files stay identical. See `references/state-and-backend.md`.
-- **Docs before code.** Read the docs for the provider version in the lock file before writing or changing a resource's arguments, and treat deprecation warnings as defects.
+- **Docs before code, never memory.** Before writing or changing a resource's arguments, read the docs and dump the schema for the provider version in the lock file, then write. Reading them afterwards to confirm what you already wrote does not count, and "the plan accepted it" proves only that the arguments exist. Treat deprecation warnings as defects. Procedure and sources: `references/module-standard.md`.
+- **Module labels say what the thing is for.** In an environment's `main.tf` name each module block after its purpose (`billing_postgres_db`, not `database` or `db`), with a matching suffix for its helpers (`…_security_group`) and a matching prefix on its outputs, so a second one of the same kind can be added without renaming.
+- **Fewer environments only when the user says so.** If they want production only, create only that and drop `make parity` from `make check` (it needs two or more environments). Say that you deviated.
 
 ## Workflow
 
-1. **Inspect.** Look for an existing `terraform/` folder, the `terraform version`, the lock file, the backend, and which environments exist. If the task spans several apps and pipelines, switch to `project-infra`.
+1. **Inspect.** Look for an existing `terraform/` folder, the `terraform version`, the lock file, the backend, and which environments exist. Read the repository-root `.gitignore`: a rule excluding `*.tfvars` or `.terraform.lock.hcl` must go, because both are committed. Find out how AWS credentials are supplied (a named profile, `aws-vault exec <profile> --`, SSO) and confirm with `aws sts get-caller-identity` which account that is before any `init` or `plan`; a 403 on the state bucket usually means the wrong account. If the task spans several apps and pipelines, switch to `project-infra`.
 2. **Pick the template:** `ec2` for a single instance (with the `docker_host` block when it runs compose behind nginx), `static-site` for a single-page app on S3 + CloudFront, `ecs` for a service behind an ALB on EC2 capacity (see References). An instance plus a site composes `ec2` and `static-site` in one root (`references/static-site.md`). If none fits, go to step 6.
 3. **Scaffold by copying.** `cp -r <skill>/assets/modules/<needed> terraform/modules/`. Into each environment folder copy `environments/common/providers.tf`, the kind's `shared/*.tf`, and `tfvars/<env>.tfvars` as `terraform.tfvars`. Copy `project/Makefile`, `project/check-env-parity.sh` (to `scripts/`) and `project/gitignore` (as `.gitignore`). Never retype a template.
 4. **Fill the markers.** Replace every `<ANGLE_BRACKET>` marker. Only touch `terraform.tfvars` per environment, then run `make parity`.
 5. **Check versions are current** (search the web or the registry): provider and Terraform releases, AMI parameter paths, action versions in the deploy workflow. Record new facts in `references/sources.md`.
-6. **Beyond the examples.** For a resource, service or pattern with no template, follow the procedure in `references/module-standard.md`: look for an existing module, read the locked provider's docs, write a module to the standard, then wire it into **all three** environments identically.
+6. **Beyond the examples.** For a resource, service or pattern with no template, follow the procedure in `references/module-standard.md`: look for an existing module, read the locked provider's docs and schema first, write a module to the standard, then wire it into **all three** environments identically.
 7. **Existing project (review or fix).** Compare it with the templates and the standard. Classify each difference as deliberate (leave it), drift (propose a fix), or uncovered. Report the list before editing. Never reshape state-bearing resources without confirmation.
 8. **Verify** (see Verification).
 9. **File gaps.** If a template is wrong or missing something, fix the project minimally and write a finding to the skills repo's `contributions/` folder (format in its `README.md`). Leave out the client, project and repository names; describe the project's shape instead ("a single-app NestJS API").
@@ -103,6 +105,8 @@ Load these only when the task needs them:
 | One EC2 instance that runs compose behind nginx, deployed over SSH | `assets/modules/docker_host_user_data` (with `docker-host.sh`), the `ec2` module's `metadata_hop_limit`, `elastic_ip` and `user_data` | `references/docker-host.md` |
 | A single-page app on S3 + CloudFront, with its GitHub deploy role | `assets/modules/{static_site,static_site_deploy_role}`, `assets/environments/static-site/` | `references/static-site.md` |
 | GitHub Actions deploying to ECS or publishing a static site without stored keys | `assets/modules/github_oidc`, `assets/github-actions/deploy-ecs.yml`, `assets/modules/static_site_deploy_role` | `references/github-oidc-deploy.md` |
+| An RDS PostgreSQL database | `assets/modules/{rds_postgres,security_group}` | `references/rds-postgres.md` |
+| Bring an existing state bucket under management; plan on pull requests and apply on merge from GitHub without stored keys | `assets/modules/{state_bucket,github_actions_role}`, `assets/github-actions/terraform-{plan,apply}.yml` | `references/terraform-pipeline.md` |
 | Remote state, backend migration, lock file | `assets/environments/common/backend.*.example` | `references/state-and-backend.md` |
 
 - `references/sources.md`: external facts (versions, doc claims) with the date each was checked.

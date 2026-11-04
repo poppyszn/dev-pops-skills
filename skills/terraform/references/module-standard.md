@@ -52,17 +52,17 @@ Output only what another module or an environment needs, with a `description`. E
 ## Procedure: a resource or pattern the templates do not cover
 
 1. **Look for what exists.** Read `assets/modules/` and the project's `modules/`. Extend or compose an existing module when the new resource belongs with it; otherwise make a new one. A module should own one coherent thing (an S3 bucket with its policy and public-access block; not "all storage").
-2. **Read the docs for the locked provider version, not memory.**
+2. **Read the docs for the locked provider version before writing, not memory.** Do this before the first line of the module, and show what you found. Writing from memory and then running `plan` is the failure this step exists to prevent: `plan` only proves the arguments exist, not that they are current, not deprecated, or used the way the docs say (an `ignore_changes` copied from habit can silently block an upgrade).
    - Find the version: `grep version environments/production/.terraform.lock.hcl`.
-   - Read `https://registry.terraform.io/providers/hashicorp/aws/<version>/docs/resources/<resource>` and the data-source page if one exists.
-   - Dump the exact schema offline: `terraform providers schema -json | python3 -c '...'` and check argument names, required vs optional and `deprecated` flags. Treat deprecated arguments as unusable.
+   - The registry pages are rendered by JavaScript and a plain fetch returns an empty page. Read the provider's source docs at the locked version instead: `https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/v<version>/website/docs/r/<resource>.html.markdown` (data sources under `d/`).
+   - Dump the exact schema offline: `terraform providers schema -json | python3 -I -c '...'` and check argument names, required vs optional and `deprecated` flags. Treat deprecated arguments as unusable. Run it in a scratch folder that holds only a `required_providers` block and a copy of the lock file; an environment folder already bound to the remote backend makes `init -backend=false` fail with a state error.
    - Read the AWS service documentation for limits, naming rules and any prerequisite (quotas, service-linked roles, one-per-account resources, regional availability).
    - If the docs and the schema disagree, trust the schema, and note it.
 3. **Check for known traps.** Search the provider's issue tracker for the resource name plus "replace", "perpetual diff" or "ignore_changes"; many resources have attributes that drift and need `ignore_changes`.
 4. **Write the module** to the rules above. Start from the closest asset module and copy its structure and comment style.
 5. **Wire it in all three environments.** Add the module block to `environments/*/main.tf` identically, its variables to every `variables.tf` (no defaults for environment-specific values), its values to every `terraform.tfvars`, its useful outputs to `outputs.tf`.
 6. **Prove it.** `make check`, then `plan` per environment. For anything that changes IAM, networking exposure or costs, show the plan summary to the user before they apply.
-7. **Record it.** Add the facts you checked to `references/sources.md` (resource, provider version, doc URL, date). If the module is general enough to be a template, offer to add it to this skill through `skill-authoring`.
+7. **Record it.** Add the facts you checked (including any attribute where the docs changed what you first wrote) to `references/sources.md` (resource, provider version, doc URL, date). If the module is general enough to be a template, offer to add it to this skill through `skill-authoring`.
 
 ## When the request is outside AWS or outside Terraform
 
