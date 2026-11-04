@@ -1,4 +1,4 @@
-name: Deploy develop branch (build on server)
+name: "Develop: Deploy (build on server)"
 
 # No-registry deploy: syncs source to the target host over SSH and builds
 # the image(s) there with `docker compose build`, instead of pulling a

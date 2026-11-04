@@ -1,4 +1,4 @@
-name: Deploy production branch
+name: "Production: Deploy"
 
 # Production topology (see references/deploy-production.md):
 #   web      -> built here, synced to S3, served by CloudFront (OIDC role, no stored keys)

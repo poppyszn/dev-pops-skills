@@ -1,4 +1,4 @@
-name: Seed production database
+name: "Production: Seed"
 
 # Manual only, deliberately no push trigger: seeding is never automatic. Runs
 # the api image's seed job (the compose `seed` profile) against the production
@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   seed:
-    name: Seed production database
+    name: "Production: Seed"
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 10

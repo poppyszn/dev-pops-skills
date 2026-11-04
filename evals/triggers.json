@@ -10,6 +10,7 @@
   {"prompt": "Deploy the develop branch to our server over SSH after the images are pushed", "expect": "cicd"},
   {"prompt": "Build and push the API image to GHCR on every merge to main", "expect": "cicd"},
   {"prompt": "Add a manual workflow that runs the database seed on the staging server", "expect": "cicd"},
+  {"prompt": "Add a manual workflow to run database migrations on our server", "expect": "cicd"},
   {"prompt": "Add a PR check that lints and tests every affected app in one job and posts a single summary comment", "expect": "cicd", "workspace": "monorepo"},
   {"prompt": "Build and push all three app images in one job with Docker Bake", "expect": "cicd", "workspace": "monorepo"},
   {"prompt": "Add secret scanning and a CVE scan to our pipeline", "expect": "security"},

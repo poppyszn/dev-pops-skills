@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.0 - 2026-11-05
+
+- **Workflow naming convention default:** Standardized workflow names following `<Category>: <Action>` for CI workflows (`CI: PR checks`, `CI: Checks`, `CI: Build and push image`) and `<Environment>: <Action>` for environment-specific deploy and operational workflows (`Production: Deploy`, `Production: Migrate`, `Production: Seed`, `Develop: Seed`, `Develop: Deploy`). Unified multi-environment workflows (`deploy.yml`, `migrate.yml`, `seed.yml`) are named simply by action (`Deploy`, `Migrate`, `Seed`) because a single workflow serves multiple environments via inputs or branch triggers.
+- **Docker Bake deploy pipeline variant:** Added `assets/deploy-workflows/deploy-pipeline-bake.yml`, enabling multi-app / microservice repositories to build all images in a single BuildKit job with `docker-bake.hcl` while keeping the standard SSH compose deploy. Shared Dockerfile stages build once and generate identical layer blobs, so the host pulls shared layers only once.
+- **Manual migration workflows:** Clarified on-demand database migration workflows alongside seeds in the standard deploy pipeline (`assets/deploy-workflows/migrate.yml` and `seed.yml` over `run-service.yml` with single-file `environment` choice input). Updated trigger examples and references.
+- Updated `assets/scripts/check-deploy-conformance.sh` to recognize `deploy-pipeline-bake.yml`.
+- Updated templates across `assets/workflows/` and `project-infra` monorepo-layout workflows to adhere to the naming convention.
+
 ## 4.0.0 - 2026-11-04
 
 - **Breaking: every project deploys through one standard pipeline.** New `assets/deploy-workflows/`: `deploy-pipeline.yml` (build each app image tagged with the commit SHA, an optional `migrate` job over SSH, then deploy the compose stack: pinned host keys, clone-safe sync, pull by SHA, `up --wait` with logs on failure, an optional smoke test, logout and prune on every exit) and `run-service.yml` (one compose service, such as seed or migrate, run against the build the last deploy put live), both copied verbatim into each project; and the project's own `deploy.yml` (its `verify` job, then a call to the local pipeline; one file for `develop` and `production`), `seed.yml` and `migrate.yml`. The default changed: a project no longer carries per-environment deploy files or vendored deploy actions; the self-contained templates stay for when a user asks for them.

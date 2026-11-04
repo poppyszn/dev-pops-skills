@@ -1,4 +1,4 @@
-name: Migrate production database
+name: "Production: Migrate"
 
 # Manual only. Runs the api image's migrations against the production database
 # on their own, without deploying anything. Deploys already run migrations
