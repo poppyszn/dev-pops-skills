@@ -2,7 +2,7 @@
 name: scripting
 description: Use when writing, reviewing, or debugging shell scripts (sh, bash) and Makefiles for DevOps work, such as container entrypoint scripts, remote commands sent over SSH or heredocs, ops and automation scripts, and parsing CLI output with jq. Also covers `make help` conventions, quoting and injection safety, fail-fast env validation, and scripts that pass locally but misbehave in CI, over SSH, or on another OS or tool version. Not for GitHub Actions workflow YAML (use cicd), Dockerfile instructions or compose files (use docker), or security scanning setup (use security).
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   last-verified: "2026-09-26"
 ---
 
@@ -66,6 +66,8 @@ Run these and report the actual output before calling the work done:
 - Run the script with the failure cases that matter: a missing required variable exits non-zero with a clear message, and a value containing spaces or quotes survives intact
 - `make help` lists every user-facing target, and a bare `make` prints help
 - For heredoc or SSH scripts: confirm the *last* command in the script actually ran (echo a marker), not just that the step exited 0
+- For a command whose failure must stop the script: replace it with `exit 1` and confirm the script fails (a pipe without `pipefail` hides it)
+- For a script people also run on macOS: run it with `/bin/bash` (3.2) too, or check it refuses bash 3 with a clear message
 
 ## Examples
 

@@ -50,3 +50,36 @@ Without `exec`, the shell stays PID 1: the app doesn't receive `SIGTERM` (slow, 
 ## Overriding a base image's entrypoint skips its setup
 
 **Shipped once.** A custom `ENTRYPOINT` on nginx silently skipped nginx's own template-rendering step. Before replacing an image's entrypoint, read what the original does.
+
+## Without `pipefail`, a pipe hides the failure on its left
+
+`set -e` stops on a failing command, but a pipeline's status is its *last* command's. In `services=$(detect.sh | paste -sd ' ' -)` a failing `detect.sh` leaves `services` empty and the script carries on as if nothing changed. Scripts get `set -euo pipefail` for this reason; it matters most where the shell isn't yours: a CI runner's default shell (GitHub Actions runs `bash -e`, no pipefail, unless the step says `shell: bash`) or a caller that sources your code. When you can't set it, don't pipe the command whose failure matters:
+```bash
+out=$(detect.sh)          # exits here under -e if detect.sh fails
+services=$(echo $out)     # reshape on the next line
+```
+Test it: replace the left-hand command with `exit 1` and check the script fails.
+
+## Bash 4 features fail on macOS's bash 3.2
+
+macOS still ships bash 3.2, so `#!/usr/bin/env bash` there runs 3.2 unless the user installed a newer one. `mapfile`/`readarray`, `${var,,}`/`${var^^}`, associative arrays (`declare -A`) and `|&` are bash 4+. A script using them passes in CI (Linux, bash 5) and fails on a developer's laptop with `mapfile: command not found`, or the reverse, for a pre-push hook. Either avoid them in scripts people run locally:
+```bash
+# instead of: mapfile -t apps < <(ls -d apps/*/)
+apps=$(find apps -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+for app in $apps; do …; done
+```
+or require bash 4 up front: `[ "${BASH_VERSINFO[0]}" -ge 4 ] || { echo "needs bash 4+ (brew install bash)" >&2; exit 1; }`. When testing a CI script on a Mac, run it with the newer bash (`/opt/homebrew/bin/bash script.sh`).
+
+## zsh reads `$var:a` as a modifier, not text
+
+In zsh (the macOS default interactive shell), `:a`, `:h`, `:t`, `:r` and others after an unbraced parameter are expansion modifiers. `git show $REF:apps/api/main.ts` turns into `git show <absolute path of $REF>pps/api/main.ts` and fails with "unknown revision". Brace the name when text follows a colon: `git show "${REF}:apps/api/main.ts"`. Scripts with a bash shebang are unaffected; this bites one-off commands typed or pasted into a zsh session. Two other zsh traps in pasted one-liners: a line made only of `=` characters (`echo =====` works, `=====` alone tries to expand a command name), and an unmatched glob, which is an error in zsh instead of being passed through.
+
+## Run a function in parallel by re-invoking the script
+
+`xargs -P` runs commands, not shell functions. Instead of `export -f` (bash-only, and fragile under `env -i` or `sh`), give the script a mode that does one item and have it call itself:
+```bash
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+if [ "${1:-}" = --one ]; then do_one "$2"; exit 0; fi
+printf '%s\n' "$@" | xargs -P "${PARALLEL:-4}" -I{} bash "$SELF" --one {}
+```
+Each item runs in its own process, so parallel items share no shell state; have each write its result to a file (`$OUT/<item>.result`) and read those back after `xargs` returns, instead of parsing interleaved output. Make `do_one` exit 0 and record failures in the result file: GNU `xargs` stops reading input once a command exits 255. On macOS (BSD `xargs`), `-I` also caps each replaced argument at 255 bytes unless `-S` raises it, so pass short names, not file contents. (The cicd skill's `run-pr-checks.sh` uses this pattern.)
