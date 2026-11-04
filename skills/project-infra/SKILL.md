@@ -2,7 +2,7 @@
 name: project-infra
 description: Use when setting up the infrastructure for a whole project at once, meaning several pieces wired together (Dockerfiles for multiple apps, compose stacks, CI, image builds, and deploy pipelines in one repo, often an npm-workspaces monorepo), or when auditing a repo's existing infra files as a set against the templates. Phrases like "set up this project's Docker and CI/CD", "dockerize and deploy this monorepo", or "check our infra against the templates". Not for a single Dockerfile or compose change (use docker), a single workflow (use cicd), or security scanning alone (use security).
 metadata:
-  version: "3.1.4"
+  version: "4.0.0"
   last-verified: "2026-09-26"
 ---
 
@@ -29,7 +29,8 @@ Apply these without asking. Deviate only if the project already does it differen
   - root `compose.yml` with `context: .` for local dev
   - `docker/develop/` for the pull-based deploy stack
   - `docker/build-on-server/` only for the build-on-host shape (never the other way round)
-- **Vendored actions and reusable workflows** go physically into `.github/actions/` and `.github/workflows/`, verbatim, with a header naming their source asset.
+- **Deploys use the standard deploy pipeline** (the cicd skill's `references/deploy-pipeline.md`). The project gets `.github/workflows/deploy.yml` (one file for `develop` and `production`), `seed.yml` and `migrate.yml`, the two verbatim pipeline files they call, and compose stacks in `docker/develop/` and `docker/production/` whose images read `${IMAGE_TAG}`. It does not get the example's vendored `deploy-develop.yml`, `run-seed-develop.yml` or deploy actions; those remain only when the user asks.
+- **Other vendored actions and reusable workflows** go physically into `.github/actions/` and `.github/workflows/`, verbatim, with a header naming their source asset.
 - **All the docker, cicd and security skill defaults apply** to each piece.
 - **One reviewable change per gap** when fixing an existing repo, never one sweeping rewrite.
 - **Existing working files are merged, never overwritten.** A project adapted for pnpm, Nx or per-app Dockerfiles isn't drift. Copying a template over it regresses it. Diff, then bring over only missing fixes.
@@ -51,8 +52,8 @@ Locate the sibling skills first: they sit next to this skill's real path (resolv
    - `COPY` paths
    - workspace build commands
    - compose service references
-   - the two-action deploy chaining
-4. **Vendor actions and reusable workflows** into `.github/` verbatim, and copy `assets/monorepo-layout/.github/PULL_REQUEST_TEMPLATE.md` alongside them.
+   - the two-action deploy chaining (only when the user asks for the self-contained deploy)
+4. **Wire the deploy:** copy the cicd skill's `assets/deploy-workflows/` into `.github/workflows/` (the two pipeline files verbatim with the vendored header, the three entry points with their markers filled; see its `references/deploy-pipeline.md`); vendor the example's deploy workflows and actions verbatim instead only when the user asks for the self-contained deploy. Copy `assets/monorepo-layout/.github/PULL_REQUEST_TEMPLATE.md` into `.github/` either way.
 5. **Check every pin is current** (image tags and action refs) as the docker and cicd skills describe. Fix stale pins in the project and file them as gaps.
 6. **Verify** (see Verification).
 7. **Manifest.** End with a short list:
@@ -81,7 +82,8 @@ When the request is "set up production" (a web app on S3 + CloudFront, servers o
 | Piece | Where |
 |---|---|
 | Production compose, `preflight.sh`, `.env.example` | docker: `assets/node-api/compose.production.yml`, `preflight.sh`, `env.production.example` |
-| Production deploy, manual migrate and seed workflows | cicd: `assets/workflows/deploy-production-nx.yml` (pnpm + Nx) or `deploy-production.yml` (npm), `migrate-production.yml`, `seed-production.yml` |
+| Production deploy of the servers, manual migrate and seed | cicd's standard pipeline: the same `deploy.yml` deploys the `production` environment, with `seed.yml` / `migrate.yml` (`references/deploy-pipeline.md`) |
+| Production deploy of a web app to S3 + CloudFront | cicd: the web job of `assets/workflows/deploy-production-nx.yml` (pnpm + Nx) or `deploy-production.yml` (npm); the standard pipeline does not deploy static sites yet |
 | Bucket, distribution, deploy role, the host | terraform (when that skill is installed): the `static-site` kind, the `docker_host` option of the `ec2` kind |
 | OIDC role trust and SSH rules | security defaults |
 
