@@ -17,7 +17,7 @@
 # deploy-develop-build-on-server.yml), drop the "docker login"/"docker
 # compose ... pull seed" lines below — the image is already local.
 
-name: Run seed job (develop)
+name: "Develop: Seed"
 
 on:
   workflow_dispatch:

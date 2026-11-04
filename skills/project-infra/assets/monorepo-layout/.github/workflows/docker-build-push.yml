@@ -1,6 +1,6 @@
 # Vendored verbatim from the dev-pops cicd skill: assets/workflows/docker-build-push.yml
 # Source of truth is that file — re-copy from there, don't hand-edit here.
-name: Build and push image
+name: "CI: Build and push image"
 
 on:
   workflow_call:

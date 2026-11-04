@@ -1,4 +1,4 @@
-name: Build and push app images (bake)
+name: "CI: Build and push images (Bake)"
 
 # Several apps from one repository, built in one job with docker-bake.hcl. One
 # builder runs the stages the Dockerfiles share once, so every image gets the

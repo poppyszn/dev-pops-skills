@@ -3,7 +3,7 @@
 # assets/workflows/ci.yml instead if this project uses
 # Nx and you want affected-only builds.
 
-name: CI
+name: "CI: Checks"
 
 on:
   # CI runs on pull requests only (plus manual runs). Deploys carry their own

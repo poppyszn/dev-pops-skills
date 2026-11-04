@@ -1,4 +1,4 @@
-name: CI
+name: "CI: Checks"
 
 on:
   # CI runs on pull requests only (plus manual runs). Deploys carry their own
