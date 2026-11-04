@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.4 - 2026-11-04
+
+- **Fix: the PR template named npm commands.** Its checklist said "`npm run lint`, `npm test` and `npm run build` pass locally", which is wrong the moment it is copied into a pnpm or yarn project, and the skill says the template is copied verbatim with no substitutions. The line now says "the project's lint, test and build commands", so the template stays verbatim for any package manager.
+- Applied `contributions/completed/pr-template-hardcodes-npm-commands.merged.md`.
+
 ## 3.1.3 - 2026-11-04
 
 - Re-copied the vendored `git-sync-deploy` and `ssh-compose-deploy` actions from cicd 3.2.1. The previous copies failed to load in any job (a `secrets` expression inside a comment).
