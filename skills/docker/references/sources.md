@@ -19,3 +19,5 @@ External facts this skill relies on. Re-check them during an audit. Mark a row `
 | S3Client `forcePathStyle` defaults to `false` and has no env var. | https://github.com/aws/aws-sdk-js-v3/blob/main/clients/client-s3/src/endpoint/EndpointParameters.ts | 2026-09-26 |
 | A port published without a host address listens on all host addresses (`0.0.0.0` and `[::]`); `-p 127.0.0.1:8080:80` restricts it to loopback. | https://docs.docker.com/engine/network/port-publishing/ | 2026-11-01 |
 | `docker compose config` renders `127.0.0.1:${API_PORT}:3000` as `host_ip: 127.0.0.1`, passes `IMAGE_TAG` into every image reference, and shows `seed` only under `--profile seed` (run against `compose.production.yml`). | Local test | 2026-11-01 |
+| Puppeteer reads `PUPPETEER_SKIP_DOWNLOAD` (skip every browser download at install), `PUPPETEER_EXECUTABLE_PATH` and `PUPPETEER_CACHE_DIR` (default `~/.cache/puppeteer`). | https://pptr.dev/api/puppeteer.configuration | 2026-11-04 |
+| Debian bookworm's `chromium` package installs the binary at `/usr/bin/chromium` (no `chromium-browser`). | https://packages.debian.org/bookworm/amd64/chromium/filelist | 2026-11-04 |

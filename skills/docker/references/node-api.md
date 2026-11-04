@@ -141,6 +141,50 @@ What works:
 
 The `dev` stage image is large (full source plus devDependencies). Use it only for migration and seed jobs, never as a runtime stage.
 
+## Variant: several app images from one repository
+
+A monorepo with one Dockerfile per app (`apps/<app>/Dockerfile`) and images built together (the cicd skill's `docker-bake.hcl`) gets one big win from the Dockerfiles' shape: if every stage before the app's own bundle is **identical, byte for byte**, BuildKit builds it once and every image carries the same layer blobs. The host then pulls `node_modules` and the source once per deploy; each extra app adds only its bundle. In one 11-app repository, two images built together shared 12 of their 13 layers.
+
+Shape every Dockerfile the same way and keep a comment on the shared stages saying so:
+
+```dockerfile
+FROM node:24-bookworm-slim AS base
+WORKDIR /app
+
+FROM base AS deps
+# Puppeteer's postinstall downloads a browser into ~/.cache/puppeteer, which
+# never reaches the runtime stage. Skip it; images that render PDFs install
+# the distribution's Chromium instead (below).
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
+
+# … deps-clean (production deps only) and build (compiles <app>) stages …
+
+# ── runtime: keep this stage identical in every Dockerfile ──
+FROM base AS runtime
+COPY --from=deps-clean /app/node_modules ./node_modules
+COPY . .
+
+FROM runtime AS production
+COPY --from=build /app/dist ./dist   # the only per-app layer
+ENV SERVICE=<app>
+```
+
+- **Anything app-specific goes after `runtime`.** An `ENV SERVICE=<app>` or a different `COPY` placed earlier gives that app its own copy of every later layer.
+- **Skip Puppeteer's browser download when `puppeteer` is a dependency** (`PUPPETEER_SKIP_DOWNLOAD=true` in the install stage). Its postinstall downloaded about 618 MB of Chrome into `/root/.cache` on every install, and that directory was never copied into the runtime image, so the images that did launch a browser failed with `Could not find Chrome` anyway.
+- **Install a browser only in the images that launch one, as its own shared stage.** Search the app's code for `puppeteer.launch` (or a helper that wraps it) before adding it: in one repository an image installed Chromium but only stored file metadata (1.95 GB, 958 MB without it), while two that rendered PDFs had none. Give those images a `chromium` stage between `base` and `runtime` (`FROM chromium AS runtime`), identical in each, so they share that layer too:
+  ```dockerfile
+  FROM base AS chromium
+  RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+      --mount=type=cache,target=/var/lib/apt,sharing=locked \
+      apt-get update && apt-get install -y --no-install-recommends chromium fonts-liberation
+  # Debian's binary is /usr/bin/chromium, not chromium-browser.
+  ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+  ```
+  On Alpine the package and the binary path differ: check them at use time before pinning.
+- Build one image locally to check the sharing: `docker image inspect -f '{{json .RootFS.Layers}}'` on two apps should list the same layers except the last few.
+
 ## Variant: SQLite, no migrations
 
 For small apps using `type: 'sqlite'` with `synchronize: true` (demos, prototypes). There's no database server, no migrations and no seed step. Deltas from the template:
