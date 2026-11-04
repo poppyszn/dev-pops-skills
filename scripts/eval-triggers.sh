@@ -19,7 +19,6 @@
 # A prompt expecting "none" passes when no dev-pops skill loads.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
-data="$root/evals/triggers.json"
 mode=${1:---lint}
 
 skills_loaded() { # stdin: stream-json; prints one skill name per line
