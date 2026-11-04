@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.2.2 - 2026-11-04
+
+- Description: "Not for" now names Terraform plan/apply pipelines (use terraform). terraform 0.6.0 added a plan/apply pipeline template, and without this line a request such as "add a terraform plan workflow" matched both skills.
+
 ## 3.2.1 - 2026-11-04
 
 - **Fix: both composite actions failed to load.** `git-sync-deploy` and `ssh-compose-deploy` had `${{ secrets.SSH_PORT }}` inside a shell comment in a `run:` body. GitHub evaluates expressions in comments too, and the `secrets` context does not exist in a composite action, so every job using either action failed before its first step. `ssh-compose-deploy` also had `${{ inputs.ssh-host }}` in a comment, which pasted the input into the script source. All three comments are reworded; the project-infra copies are re-copied.

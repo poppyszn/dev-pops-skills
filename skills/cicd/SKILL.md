@@ -1,8 +1,8 @@
 ---
 name: cicd
-description: Use when creating, modifying, or debugging CI/CD pipelines in GitHub Actions (.github/workflows/*.yml, .github/actions/*/action.yml), including lint/test/build CI for Node repos (single package, several independent apps, or Nx/npm-workspaces monorepos), single-job PR checks with a PR comment summary, building and pushing Docker images to GHCR (one image, or several in one Docker Bake job), deploying a compose stack to a server over SSH (registry pull or build-on-server), running seed/migration jobs against a deployed environment, production deploys (web to S3 + CloudFront, servers to a Docker host over SSH, with preflight, migrate-then-restart and SHA-pinned rollback), and failing, slow, or flaky pipeline runs. Not for writing Dockerfiles or compose files (use docker), security scanning workflows, secrets, or token hardening (use security), or setting up a whole multi-app project at once (use project-infra).
+description: Use when creating, modifying, or debugging CI/CD pipelines in GitHub Actions (.github/workflows/*.yml, .github/actions/*/action.yml), including lint/test/build CI for Node repos (single package, several independent apps, or Nx/npm-workspaces monorepos), single-job PR checks with a PR comment summary, building and pushing Docker images to GHCR (one image, or several in one Docker Bake job), deploying a compose stack to a server over SSH (registry pull or build-on-server), running seed/migration jobs against a deployed environment, production deploys (web to S3 + CloudFront, servers to a Docker host over SSH, with preflight, migrate-then-restart and SHA-pinned rollback), and failing, slow, or flaky pipeline runs. Not for writing Dockerfiles or compose files (use docker), Terraform plan/apply pipelines (use terraform), security scanning workflows, secrets, or token hardening (use security), or setting up a whole multi-app project at once (use project-infra).
 metadata:
-  version: "3.2.1"
+  version: "3.2.2"
   last-verified: "2026-11-01"
 ---
 
@@ -16,7 +16,7 @@ Build CI and deploy pipelines on GitHub Actions from proven templates, and revie
 - "Set up CI", "build and push the image", "deploy develop to the server", "run the seed on develop"
 - A run is failing, slow, flaky, or reports success without doing its work
 
-Not for: Dockerfile/compose content (`docker`), security scanning, secrets and permission hardening (`security`), whole-project setup (`project-infra`).
+Not for: Dockerfile/compose content (`docker`), Terraform plan/apply pipelines (`terraform`), security scanning, secrets and permission hardening (`security`), whole-project setup (`project-infra`).
 
 ## Defaults
 
