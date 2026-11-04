@@ -84,7 +84,7 @@ It never commits for you. If a template doesn't fit your project, the agent fixe
 Two pieces of evidence, both limited and both in the repo:
 
 - **A before/after.** [`docs/demo/dockerize-api/`](docs/demo/dockerize-api/README.md) runs one prompt ("dockerize this NestJS API with Postgres") with and without the `docker` skill and scores both against a 14-point checklist: 11 without the skill, 13 with it. The gap is modest on this prompt, and the page says why.
-- **A trigger test.** [`evals/triggers.json`](evals/triggers.json) holds 31 prompts and the skill each should load (including four that should load none). `./scripts/eval-triggers.sh --lint` checks the dataset in CI; `--run` asks a real agent each prompt and reports which skill loaded. The live run needs a logged-in CLI, and hasn't been run against these skills yet.
+- **A trigger test.** [`evals/triggers.json`](evals/triggers.json) holds 31 prompts and the skill each should load (including four that should load none). `./scripts/eval-triggers.sh --lint` checks the dataset in CI; `--run` asks a real agent each prompt, against a small stand-in project, and reports which skill it loaded first. The first full run (Haiku) loaded the expected skill for 20 of 31 prompts. Every miss loaded no skill, none loaded the wrong one, and all four unrelated prompts correctly loaded none. A re-check traced most misses to the stand-in project lacking what the prompt mentioned, since fixed with per-prompt overlays; one, a new shell script, was a real miss for `scripting`. By default `--run` is a 9-prompt sample that stops each run as soon as a skill loads.
 
 Two short write-ups of bugs these skills now avoid: [the single-page app that never returns a 404](docs/writing/the-spa-that-never-404s.md) and [the first deploy that couldn't follow its own runbook](docs/writing/deploy-clone-into-a-directory-that-exists.md).
 
@@ -128,7 +128,7 @@ AGENTS.md            instructions for any agent working in this repo (CLAUDE.md 
 
 ## Status
 
-The skills are in daily use on my own projects, and the templates come from setups that run in production. The stack is deliberately narrow: Node/TypeScript only, with PHP, Python and Kubernetes listed on the [roadmap](roadmap.md) but not built. Whether an agent *triggers* the right skill is tested by [`evals/`](evals/triggers.json), but that test hasn't been run live against these skills yet, so treat trigger reliability as unmeasured.
+The skills are in daily use on my own projects, and the templates come from setups that run in production. The stack is deliberately narrow: Node/TypeScript only, with PHP, Python and Kubernetes listed on the [roadmap](roadmap.md) but not built. Whether an agent *triggers* the right skill is tested by [`evals/`](evals/triggers.json), and the first live run is summarised above: no wrong-skill loads, but some requests load no skill at all with a small model.
 
 Contributions are welcome as issues describing a gap, or as pull requests that follow [`AGENTS.md`](AGENTS.md).
 

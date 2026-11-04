@@ -34,7 +34,7 @@ The skills cross-reference each other (docker, cicd, security, scripting; `proje
 Other repo-level folders:
 
 - `contributions/`: gap findings filed by agents that hit a template problem in another project. **A finding never names the client, project or repository**; it describes the project's shape (`skills/skill-authoring/references/standard.md` §12). Apply them via skill-authoring's "Apply a finding" flow. Open findings sit directly in the folder; applied ones are moved to `contributions/completed/` and are closed records.
-- `evals/`: the trigger dataset (`triggers.json`: which skill each prompt should load) and the mechanical checklist used by the before/after in `docs/demo/`. Add a prompt here whenever a skill's description changes or an agent picks the wrong skill.
+- `evals/`: the trigger dataset (`triggers.json`: which skill each prompt should load) the stand-in projects each prompt runs against (`workspaces/`: a base project plus optional overlays; not templates), and the mechanical checklist used by the before/after in `docs/demo/`. `--run` costs real usage, so it defaults to a 9-prompt sample. Add a prompt here whenever a skill's description changes or an agent picks the wrong skill.
 - `roadmap.md`: planned templates and pending decisions. Nothing listed there exists yet.
 - `docs/history/`: design rationale from the old templates repo. Read it for *why*, but its paths are outdated.
 - `.github/`: this repo's own automation (Dependabot for image pins, and a weekly freshness audit that opens an issue on drift). These aren't templates.
