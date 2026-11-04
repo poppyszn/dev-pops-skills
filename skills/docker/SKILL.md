@@ -1,8 +1,8 @@
 ---
 name: docker
-description: Use when writing, reviewing, or debugging a Dockerfile, .dockerignore, compose.yaml / docker-compose.yml, or container entrypoint script, or when dockerizing a Node/TypeScript API, static SPA (Vite/CRA behind nginx), Next.js app, or Nitro SSR server. Also covers a production compose stack for a single Docker host behind nginx (loopback ports, images run by commit SHA, a preflight on the host `.env`), local S3 object storage for dev and tests (Adobe S3Mock, replacing MinIO), runtime env injection into frontend images, image size and layer caching, healthchecks, and container runtime issues such as crash loops, unreachable ports, or permission errors. Not for CI workflows or deploy pipelines (use cicd), image vulnerability scanning or secrets handling (use security), setting up a whole multi-app project (use project-infra), or general shell scripting (use scripting).
+description: Use when writing, reviewing, or debugging a Dockerfile, .dockerignore, compose.yaml / docker-compose.yml, or container entrypoint script, or when dockerizing a Node/TypeScript API, static SPA (Vite/CRA behind nginx), Next.js app, or Nitro SSR server. Also covers a production compose stack for a single Docker host behind nginx (loopback ports, images run by commit SHA, a preflight on the host `.env`), local S3 object storage for dev and tests (Adobe S3Mock, replacing MinIO), runtime env injection into frontend images, image size and layer caching (including several app images in one monorepo sharing their layers, and Puppeteer's browser download), healthchecks, and container runtime issues such as crash loops, unreachable ports, or permission errors. Not for CI workflows or deploy pipelines (use cicd), image vulnerability scanning or secrets handling (use security), setting up a whole multi-app project (use project-infra), or general shell scripting (use scripting).
 metadata:
-  version: "1.4.1"
+  version: "1.5.0"
   last-verified: "2026-09-26"
 ---
 
@@ -102,7 +102,7 @@ Load these only when the task needs them:
 
 | Need | Assets | Read first |
 |---|---|---|
-| Node/TypeScript API (+ Postgres/Redis, migrate/seed jobs, SQLite and NestJS-webpack variants, test-only infra) | `assets/node-api/` (`Dockerfile`, `entrypoint.sh`, `compose.yml`, `compose.deploy.yml`, `compose.testing.yml`) | `references/node-api.md` |
+| Node/TypeScript API (+ Postgres/Redis, migrate/seed jobs, SQLite and NestJS-webpack variants, several app images sharing layers in one repo, Puppeteer/Chromium, test-only infra) | `assets/node-api/` (`Dockerfile`, `entrypoint.sh`, `compose.yml`, `compose.deploy.yml`, `compose.testing.yml`) | `references/node-api.md` |
 | Static SPA (Vite/CRA) behind nginx | `assets/frontend-spa-nginx/` | `references/frontend-spa-nginx.md` |
 | Next.js app | `assets/frontend-nextjs/` | `references/frontend-nextjs.md` |
 | Nitro SSR server (TanStack Start, Nuxt…) | start from `assets/frontend-nextjs/Dockerfile` | `references/node-ssr-nitro.md` |
