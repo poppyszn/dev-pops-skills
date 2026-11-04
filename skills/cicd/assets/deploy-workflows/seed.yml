@@ -1,0 +1,31 @@
+# Run the compose `seed` service once on an environment's host, against the
+# build that is deployed there now. Copy to .github/workflows/seed.yml and fill
+# the <ANGLE_BRACKET> markers. See references/deploy-pipeline.md.
+
+name: Seed
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to run seed on
+        type: choice
+        options: [develop, production]
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: seed-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: Seed
+    uses: ./.github/workflows/run-service.yml
+    with:
+      environment: ${{ inputs.environment }}
+      service: seed
+    secrets: inherit

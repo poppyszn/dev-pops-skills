@@ -30,5 +30,18 @@ cp "$root"/skills/terraform/assets/github-actions/*.yml "$tf/.github/workflows/"
 (cd "$tf" && "$lint" -no-color .github/workflows/*.yml) || status=1
 rm -rf "$tf"
 
+# 5. The cicd deploy pipeline and its three callers, laid out as a project holds
+#    them (the callers call the local copies), with the callers' markers filled.
+#    actionlint checks every input a caller passes against what the pipeline
+#    declares, so a misspelled input fails here.
+dp=$(mktemp -d); git init -q "$dp"; mkdir -p "$dp/.github/workflows"
+for f in "$root"/skills/cicd/assets/deploy-workflows/*.yml; do
+  sed -e 's#<NODE_VERSION_FILE>#.nvmrc#; s#<PACKAGE_MANAGER>#npm#; s#<INSTALL_COMMAND>#npm ci#' \
+      -e 's#<LINT_COMMAND>#npm run lint#; s#<TYPECHECK_COMMAND>#npm run typecheck#' \
+      -e "s#'<APPS_JSON>'#'[\"api\"]'#; s#<true|false>#true#" "$f" > "$dp/.github/workflows/$(basename "$f")"
+done
+(cd "$dp" && "$lint" -no-color .github/workflows/*.yml) || status=1
+rm -rf "$dp"
+
 [ "$status" -eq 0 ] && echo "actionlint: all workflows clean"
 exit "$status"

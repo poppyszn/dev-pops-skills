@@ -64,3 +64,7 @@ focus of this repo's first version.
 ## Deploy to a Docker host over SSM instead of SSH
 
 The `ec2` template is Session-Manager-only, but the production deploy template reaches a Docker host over SSH because a GitHub-hosted runner cannot be restricted to a source address. Running the deploy through SSM Run Command with the OIDC role would remove port 22, the bastion and the deploy key. Not templated: it would be a new deploy path with no production history. See `skills/terraform/references/docker-host.md`.
+
+## Static sites in the standard deploy pipeline
+
+The standard deploy pipeline (cicd `references/deploy-pipeline.md`) deploys server apps to a host over SSH. A web app on S3 + CloudFront still deploys through the web job of cicd's production template, so a project with both has two deploy paths. Add an optional static-site job to `deploy-pipeline.yml` (build, sync to the bucket, invalidate, smoke test, through the OIDC role) so every project has one.

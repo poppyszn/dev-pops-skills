@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.0 - 2026-11-04
+
+- **Breaking: a project set up here deploys through the standard deploy pipeline** (cicd 4.0.0). Greenfield step 4 copies cicd's `assets/deploy-workflows/` (`deploy.yml` for both environments, `seed.yml`, `migrate.yml`, and the two verbatim pipeline files they call) instead of vendoring the example's `deploy-develop.yml`, `run-seed-develop.yml` and deploy actions, which stay only for when the user asks for the self-contained deploy. The production map sends server deploys through the same pipeline; a static site on S3 + CloudFront still uses cicd's production template, because the standard pipeline does not deploy static sites yet.
+
 ## 3.1.4 - 2026-11-04
 
 - **Fix: the PR template named npm commands.** Its checklist said "`npm run lint`, `npm test` and `npm run build` pass locally", which is wrong the moment it is copied into a pnpm or yarn project, and the skill says the template is copied verbatim with no substitutions. The line now says "the project's lint, test and build commands", so the template stays verbatim for any package manager.
