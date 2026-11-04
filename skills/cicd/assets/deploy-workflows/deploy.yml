@@ -1,0 +1,67 @@
+# A project's whole deploy pipeline: its own pre-deploy check, then the
+# deploy pipeline. Copy to .github/workflows/deploy.yml and
+# fill every <ANGLE_BRACKET> marker. See references/deploy-pipeline.md.
+#
+# One file for both environments: a push to develop deploys to the develop
+# GitHub Environment, a push to production to the production one.
+
+name: Deploy
+
+on:
+  push:
+    branches: [develop, production]
+    # Not .github/**: a push that only changes this pipeline must still deploy.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Commit to deploy (empty for the branch's latest). Re-deploying an older commit is a rollback.
+        type: string
+        required: false
+
+# packages: write is what the pipeline's build job needs to push images; a called
+# workflow can only narrow what this grants.
+permissions:
+  contents: read
+  packages: write
+
+# One deploy per environment at a time, and never cancel one halfway: a
+# cancelled deploy can leave the host between two releases.
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify
+    # Only the two deploy branches have environments; a manual run from any
+    # other branch would otherwise create a stray environment.
+    if: ${{ contains(fromJson('["develop","production"]'), github.ref_name) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit_sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: <NODE_VERSION_FILE>
+          cache: <PACKAGE_MANAGER>
+      # The project's own install, lint and typecheck: the light gate before a
+      # deploy (the full test suite runs on the pull request).
+      - run: <INSTALL_COMMAND>
+      - run: <LINT_COMMAND>
+      - run: <TYPECHECK_COMMAND>
+
+  deploy:
+    name: Deploy
+    needs: verify
+    uses: ./.github/workflows/deploy-pipeline.yml
+    with:
+      environment: ${{ github.ref_name }}
+      apps: '<APPS_JSON>'
+      migrate: <true|false>
+      commit-sha: ${{ inputs.commit_sha }}
+    secrets: inherit

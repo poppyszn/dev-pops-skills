@@ -1,0 +1,31 @@
+# Run the compose `migrate` service once on an environment's host, against the
+# build that is deployed there now. Copy to .github/workflows/migrate.yml and fill
+# the <ANGLE_BRACKET> markers. See references/deploy-pipeline.md.
+
+name: Migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to run migrate on
+        type: choice
+        options: [develop, production]
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: migrate-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Migrate
+    uses: ./.github/workflows/run-service.yml
+    with:
+      environment: ${{ inputs.environment }}
+      service: migrate
+    secrets: inherit

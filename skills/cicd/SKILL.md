@@ -1,8 +1,8 @@
 ---
 name: cicd
-description: Use when creating, modifying, or debugging CI/CD pipelines in GitHub Actions (.github/workflows/*.yml, .github/actions/*/action.yml), including lint/test/build CI for Node repos (single package, several independent apps, or Nx/npm-workspaces monorepos), single-job PR checks with a PR comment summary, building and pushing Docker images to GHCR (one image, or several in one Docker Bake job), deploying a compose stack to a server over SSH (registry pull or build-on-server), running seed/migration jobs against a deployed environment, production deploys (web to S3 + CloudFront, servers to a Docker host over SSH, with preflight, migrate-then-restart and SHA-pinned rollback), and failing, slow, or flaky pipeline runs. Not for writing Dockerfiles or compose files (use docker), Terraform plan/apply pipelines (use terraform), security scanning workflows, secrets, or token hardening (use security), or setting up a whole multi-app project at once (use project-infra).
+description: Use when creating, modifying, or debugging GitHub Actions CI/CD (.github/workflows/*.yml, .github/actions/*/action.yml), including lint/test/build CI for Node repos (single package, several apps, or Nx/npm-workspaces monorepos), single-job PR checks with a PR comment, building and pushing Docker images to GHCR (one image, or several in one Bake job), the standard deploy pipeline every project copies (build, migrate and deploy a compose stack over SSH, the same for develop and production), making every repository's deploy pipeline the same, seed and migration runs, production deploys (S3 + CloudFront web, Docker host servers, SHA-pinned rollback), and failing, slow, or flaky runs. Not for Dockerfiles or compose files (use docker), Terraform plan/apply pipelines (use terraform), security scanning, secrets, or token hardening (use security), or setting up a whole multi-app project at once (use project-infra).
 metadata:
-  version: "3.2.2"
+  version: "4.0.0"
   last-verified: "2026-11-01"
 ---
 
@@ -14,6 +14,7 @@ Build CI and deploy pipelines on GitHub Actions from proven templates, and revie
 
 - Adding or editing a workflow or composite action
 - "Set up CI", "build and push the image", "deploy develop to the server", "run the seed on develop"
+- "Make our deploy pipelines consistent", "move this repo to the standard pipeline", "update the deploy pipeline in every repo", "why does every repo deploy differently?"
 - A run is failing, slow, flaky, or reports success without doing its work
 
 Not for: Dockerfile/compose content (`docker`), Terraform plan/apply pipelines (`terraform`), security scanning, secrets and permission hardening (`security`), whole-project setup (`project-infra`).
@@ -24,6 +25,7 @@ Apply these without asking. Deviate only if the project already does it differen
 
 - **Start from a template, copied verbatim** with `cp`. Then edit only `<ANGLE_BRACKET>` markers and the deltas its reference names. Never retype a workflow from memory.
 - **Existing files are merged, never overwritten.** If the project already has the workflow, diff it against the template and bring over only the missing fixes. A working adaptation (pnpm, per-app matrix, monorepo paths) is not drift, and a verbatim copy over it is a regression.
+- **Deploys use the standard deploy pipeline.** A project's deploy is `.github/workflows/deploy.yml` (from `assets/deploy-workflows/deploy.yml`): its own `verify` job, then a call to the local `deploy-pipeline.yml` with `secrets: inherit`. The same file deploys `develop` and `production`; seeds and migrations go through `seed.yml` and `migrate.yml` over `run-service.yml`. `deploy-pipeline.yml` and `run-service.yml` are copied verbatim with the vendored header and never edited in the project; a change to them is made in this skill and re-copied into every project (`references/deploy-pipeline.md`). No per-environment deploy files and no vendored deploy actions. The self-contained deploy templates remain only when the user asks for them.
 - **Composite actions and reusable workflows are vendored** into the project's `.github/actions/` and `.github/workflows/`. `uses: ./…` needs the physical file. Keep a header comment naming the source asset, and never hand-edit the vendored copy.
 - **Actions pinned to a version tag** (`@v7`), never `@main` or `@latest`. Container images run in steps are pinned too.
 - **Least-privilege `permissions:`** at the top of every workflow (`contents: read` minimum). Grant more per job only where needed. A job-level block replaces the top-level one entirely, and a called workflow can't get more than its caller grants.
@@ -52,7 +54,7 @@ Apply these without asking. Deviate only if the project already does it differen
 2. **Pick the template** from the References table and read its reference file first. For production also read the docker skill's production compose and the terraform skill's static-site and docker-host references for the AWS side.
 3. **Copy assets verbatim.** Workflows go to `.github/workflows/`, composite actions to `.github/actions/<name>/action.yml`. Edit only markers and documented deltas. Fill `<INTEGRATION_BRANCH>` with the branch PRs target (ask if it isn't clear from the repo). If the file already exists, merge instead (see Defaults).
 4. **Check pins are current.** For each `uses: owner/repo@ref`, confirm the ref exists (`gh api repos/<owner>/<repo>/git/refs/tags/<ref>`) and the major isn't behind (`gh api repos/<owner>/<repo>/releases/latest`). For images, check the registry. Use the current version and file the stale template pin as a gap (step 7).
-5. **For an existing workflow (review/fix):** check it against the Defaults and `references/gotchas.md`. Classify each difference as deliberate, drift, or uncovered, and report the list before editing.
+5. **For an existing workflow (review/fix):** for deploys, run `assets/scripts/check-deploy-conformance.sh` from the project root first; it compares the two copied pipeline files with this skill's and lists every other difference from the standard. Check the rest against the Defaults and `references/gotchas.md`. Classify each difference as deliberate, drift, or uncovered, and report the list before editing.
 6. **Verify** (see Verification).
 7. **File gaps, don't route around them:** write a finding to the skills repo's `contributions/` folder (two levels above this skill's real path; format in its `README.md`). Leave out the client, project and repository names; describe the project's shape instead ("a single-app NestJS API").
 
@@ -78,6 +80,7 @@ Run these and report the actual output before calling the work done:
 - `diff` each vendored or verbatim file against its asset. Every difference must be a documented substitution.
 - Shell assets (`run-pr-checks.sh`, `detect-affected.sh`): `bash -n` and `shellcheck`, then run `detect-affected.sh` against a real base ref, and make one check fail on purpose to see the summary and a non-zero exit
 - Bake: `docker buildx bake -f docker-bake.hcl --print` resolves every app, and one app builds locally
+- Deploy pipeline: in a scratch repository with the five files copied, run `actionlint` (it checks every input `deploy.yml` passes against what `deploy-pipeline.yml` declares); `check-deploy-conformance.sh` reports `conforms` for a migrated project
 - Production: `preflight.sh` exits 0 against a realistic `.env` and exits 1 for each rule you added (test it with fixture files, never the real `.env`)
 - Where possible, a real run on a branch or PR (after confirmation), with the result reported
 
@@ -116,6 +119,7 @@ Load these only when the task needs them:
 | Deploy by building on the target host (no registry) | `assets/workflows/deploy-develop-build-on-server.yml` + `assets/actions/git-sync-deploy/action.yml` | `references/build-on-server.md`, `references/git-sync-deploy.md` |
 | PR checks for an npm-workspaces monorepo in one job, posted as a PR comment | `assets/workflows/pr-checks.yml`, `assets/scripts/run-pr-checks.sh`, `assets/scripts/detect-affected.sh` | `references/pr-checks.md` |
 | Build several app images from one repo in one job (Docker Bake), and deploy only what a push changed | `assets/workflows/docker-bake-push.yml`, `assets/bake/docker-bake.hcl` (+ `detect-affected.sh`) | `references/docker-bake.md` |
+| Deploy any project the same way: the standard pipeline (two verbatim files) and the short files each project keeps; check a project against it | `assets/deploy-workflows/{deploy-pipeline,run-service,deploy,seed,migrate}.yml`, `assets/scripts/check-deploy-conformance.sh` | `references/deploy-pipeline.md` |
 | Run a seed job on demand against a deployed environment | `assets/workflows/run-seed-develop.yml` | `references/run-seed.md` |
 | Production: web to S3 + CloudFront, servers to a Docker host over SSH (pnpm + Nx, or npm workspaces), plus manual migrate and seed | `assets/workflows/deploy-production-nx.yml` or `deploy-production.yml`, `migrate-production.yml`, `seed-production.yml` (with `docker-build-push.yml`) | `references/deploy-production.md` |
 

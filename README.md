@@ -15,7 +15,7 @@ It works with Claude Code and Antigravity, and with any agent that supports the 
 | Skill | The agent uses it to… |
 |---|---|
 | [docker](skills/docker/SKILL.md) | write Dockerfiles and compose stacks (dev, deploy, production host) for Node APIs, SPAs, Next.js and Nitro; local S3 with Adobe S3Mock |
-| [cicd](skills/cicd/SKILL.md) | build GitHub Actions CI (including single-job PR checks that post one summary comment), push images to GHCR (one at a time, or several in one Bake job), deploy over SSH, ship production (S3 + CloudFront web, Docker host servers), run migrate and seed jobs |
+| [cicd](skills/cicd/SKILL.md) | build GitHub Actions CI (including single-job PR checks that post one summary comment), push images to GHCR (one at a time, or several in one Bake job), give every project the same standard deploy pipeline, ship production (S3 + CloudFront web, Docker host servers), run migrate and seed jobs |
 | [terraform](skills/terraform/SKILL.md) | write AWS infrastructure from hand-written modules (EC2, ECS behind an ALB, RDS PostgreSQL, static site), with GitHub OIDC deploy roles, a plan/apply pipeline, and production, staging and development kept identical |
 | [security](skills/security/SKILL.md) | add gitleaks, dependency audit, Trivy and opt-in CodeQL; harden workflows and containers; handle secrets |
 | [scripting](skills/scripting/SKILL.md) | write shell scripts and Makefiles that are quoted, fail fast and behave the same over SSH and in CI |
