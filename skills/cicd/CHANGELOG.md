@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.2.0 - 2026-11-04
+
+- **New: single-job PR checks** (`assets/workflows/pr-checks.yml`, `assets/scripts/run-pr-checks.sh`, `assets/scripts/detect-affected.sh`, `references/pr-checks.md`), from a monorepo's pipeline that replaced a per-app matrix: one runner checks every affected app several at a time and posts one PR comment (updated in place) with a pass/fail table and the end of each failing log. The comment step has `continue-on-error` so only the checks decide the result, and the summary shows `pull_request.head.sha`, not the merge commit.
+- **New: several app images in one Docker Bake job** (`assets/workflows/docker-bake-push.yml`, `assets/bake/docker-bake.hcl`, `references/docker-bake.md`). Same tags as `docker-build-push.yml`, one GHA cache scope per app, `max-parallelism` sized to the runner. The reference also covers deploying only what a push changed (`github.event.before`, a missing base deploys everything, an empty list skips the later jobs).
+- `references/gotchas.md`: the default step shell has no pipefail; `GITHUB_SHA` on `pull_request` is a merge commit; cache scope, 7-day eviction and gzip vs zstd entries; private-repo hosted runners are 2 CPU / 8 GB; diff the whole push; `paths-ignore: .github/**` and two push-triggered deploys; seeds on request; quote a `name:` containing `: `.
+- `docker-build-push.yml` and its reference no longer name a real repository and owner (standard §12); the project-infra vendored copy is re-copied.
+- Checked: both scripts pass `bash -n` and shellcheck; in a throwaway npm-workspaces repo `detect-affected.sh` gave the same results on bash 3.2 and 5 (a two-commit push, the last commit only, no change, a shared-folder change, an unknown base exits 1), and `run-pr-checks.sh` produced the table, a failing lint's excerpt and exit 1, `—` for a missing script, and exit 0 for "nothing to check" and all-green. `docker buildx bake --print` resolved the bake file with and without CI variables, one app built by name, and two apps built together shared all but their own layer. `actionlint` (with shellcheck) reports nothing on the new and edited workflows.
+- Not run: a real GitHub Actions run of either workflow (the patterns ran in production on the source pipeline, but these generic copies have not).
+
 ## 3.1.0 - 2026-11-03
 
 - The "file gaps" step now says to leave out the client, project and repository names and describe the project's shape instead (standard §12 in skill-authoring).

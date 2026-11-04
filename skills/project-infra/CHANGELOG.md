@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.2 - 2026-11-04
+
+- Re-copied the vendored `.github/workflows/docker-build-push.yml` from the cicd skill (3.2.0), which no longer names a real repository and owner in a comment.
+
 ## 3.1.1 - 2026-11-03
 
 - The example's `apps/api`, `apps/admin` and `apps/web` `HEALTHCHECK` lines carry the same `# hadolint ignore=DL3025` and reason as the docker templates they were adapted from.

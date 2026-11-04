@@ -1,0 +1,100 @@
+name: Build and push app images (bake)
+
+# Several apps from one repository, built in one job with docker-bake.hcl. One
+# builder runs the stages the Dockerfiles share once, so every image gets the
+# same layer blobs; a matrix of docker-build-push.yml calls rebuilds or
+# re-downloads those stages on every runner. Tags match docker-build-push.yml.
+
+on:
+  workflow_call:
+    inputs:
+      # Space-separated app names from docker-bake.hcl's matrix.
+      apps:
+        required: true
+        type: string
+      image-tag:
+        required: true
+        type: string
+      # Commit to build and tag. Empty builds the commit that triggered the run.
+      # A caller deploying a chosen commit (a rollback or redeploy) must pass it.
+      ref:
+        required: false
+        type: string
+        default: ""
+      # Build steps BuildKit runs at once. 2 suits a hosted runner for a private
+      # repository (2 CPUs, 8 GB); raise it on a bigger runner.
+      max-parallelism:
+        required: false
+        type: number
+        default: 2
+  workflow_dispatch:
+    inputs:
+      apps:
+        required: true
+        type: string
+      image-tag:
+        required: true
+        type: string
+      ref:
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - uses: docker/setup-buildx-action@v4
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = ${{ inputs.max-parallelism || 2 }}
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # GHCR image paths must be lowercase; github.repository keeps the owner's
+      # case, so a mixed-case owner fails every push.
+      - name: Resolve image name, commit and targets
+        id: vars
+        env:
+          REPO: ${{ github.repository }}
+          REF: ${{ inputs.ref || github.sha }}
+          SELECTED_APPS: ${{ inputs.apps }}
+        run: |
+          read -ra apps <<< "$SELECTED_APPS"
+          sha=$(git rev-parse "$REF")
+          {
+            echo "image=ghcr.io/${REPO,,}"
+            echo "sha=$sha"
+            echo "targets=$(IFS=,; echo "${apps[*]}")"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/bake-action@v7
+        with:
+          source: .
+          files: docker-bake.hcl
+          targets: ${{ steps.vars.outputs.targets }}
+          push: true
+          sbom: true
+          provenance: true
+          # *.pull re-resolves the base image tag, so security releases are picked up.
+          set: |
+            *.platform=linux/amd64
+            *.pull=true
+          vars: |
+            IMAGE=${{ steps.vars.outputs.image }}
+            TAG=${{ inputs.image-tag }}
+            SHA=${{ steps.vars.outputs.sha }}
+            CACHE_SCOPE=${{ github.event.repository.name }}

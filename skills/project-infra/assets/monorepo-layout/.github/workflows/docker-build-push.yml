@@ -59,8 +59,7 @@ jobs:
       # GHCR image paths must be all-lowercase, but github.repository
       # preserves the owner's actual case (e.g. SomeOrg/repo) — a
       # mixed-case tag makes docker/build-push-action fail every push.
-      # Confirmed against a real repo with an uppercase-containing owner
-      # name (property-management-api, owner VICTOR-CHUKWU).
+      # Confirmed against a real repository whose owner name has capitals.
       - name: Compute lowercase image repository
         env:
           REPO: ${{ github.repository }}
