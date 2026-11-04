@@ -34,11 +34,11 @@ pushes it to GHCR with per-app GitHub Actions cache scoping. Stops at
 ## The `Compute lowercase image repository` step isn't optional
 
 `github.repository` preserves the repo owner's actual case (e.g.
-`VICTOR-CHUKWU/property-management-api`), but GHCR image paths must be
+`Some-Owner/some-api`), but GHCR image paths must be
 all-lowercase — pushing a tag with any uppercase character fails
 outright. This step lowercases it into `env.REPO_LC` before it's used in
 any tag. Don't revert to `ghcr.io/${{ github.repository }}-...` even for
 "just testing" — it works only by coincidence for all-lowercase
 usernames/orgs, and breaks silently (well, loudly, but only in CI, not
-locally) for anyone else. Confirmed against a real deploy
-(property-management-api/-ui, owner `VICTOR-CHUKWU`).
+locally) for anyone else. Confirmed against a real deploy of an API
+and a UI repository whose owner name has capitals.

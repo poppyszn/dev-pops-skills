@@ -75,6 +75,7 @@ This does not relax `skill-authoring`'s rule that an agent shows the diff rather
 ./scripts/check-links.sh                   # internal links and referenced paths exist
 ./scripts/check-private-names.sh           # no client/project names or home paths (uses a local, gitignored .private-names)
 ./scripts/check-compose.sh                 # docker compose config -q on every compose template
+./scripts/check-run-expressions.sh         # no ${{ }} in any run: body (actions included, comments included)
 ACTIONLINT=$(which actionlint) ./scripts/check-workflows.sh   # actionlint over every workflow template
 ./scripts/freshness-audit.sh               # the weekly pin/tag check, runnable locally
 ```

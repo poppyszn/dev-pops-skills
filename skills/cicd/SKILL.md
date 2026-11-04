@@ -1,8 +1,8 @@
 ---
 name: cicd
-description: Use when creating, modifying, or debugging CI/CD pipelines in GitHub Actions (.github/workflows/*.yml, .github/actions/*/action.yml), including lint/test/build CI for Node repos (single package, several independent apps, or Nx/npm-workspaces monorepos), building and pushing Docker images to GHCR, deploying a compose stack to a server over SSH (registry pull or build-on-server), running seed/migration jobs against a deployed environment, production deploys (web to S3 + CloudFront, servers to a Docker host over SSH, with preflight, migrate-then-restart and SHA-pinned rollback), and failing, slow, or flaky pipeline runs. Not for writing Dockerfiles or compose files (use docker), security scanning workflows, secrets, or token hardening (use security), or setting up a whole multi-app project at once (use project-infra).
+description: Use when creating, modifying, or debugging CI/CD pipelines in GitHub Actions (.github/workflows/*.yml, .github/actions/*/action.yml), including lint/test/build CI for Node repos (single package, several independent apps, or Nx/npm-workspaces monorepos), single-job PR checks with a PR comment summary, building and pushing Docker images to GHCR (one image, or several in one Docker Bake job), deploying a compose stack to a server over SSH (registry pull or build-on-server), running seed/migration jobs against a deployed environment, production deploys (web to S3 + CloudFront, servers to a Docker host over SSH, with preflight, migrate-then-restart and SHA-pinned rollback), and failing, slow, or flaky pipeline runs. Not for writing Dockerfiles or compose files (use docker), Terraform plan/apply pipelines (use terraform), security scanning workflows, secrets, or token hardening (use security), or setting up a whole multi-app project at once (use project-infra).
 metadata:
-  version: "3.1.0"
+  version: "3.2.2"
   last-verified: "2026-11-01"
 ---
 
@@ -16,7 +16,7 @@ Build CI and deploy pipelines on GitHub Actions from proven templates, and revie
 - "Set up CI", "build and push the image", "deploy develop to the server", "run the seed on develop"
 - A run is failing, slow, flaky, or reports success without doing its work
 
-Not for: Dockerfile/compose content (`docker`), security scanning, secrets and permission hardening (`security`), whole-project setup (`project-infra`).
+Not for: Dockerfile/compose content (`docker`), Terraform plan/apply pipelines (`terraform`), security scanning, secrets and permission hardening (`security`), whole-project setup (`project-infra`).
 
 ## Defaults
 
@@ -74,8 +74,10 @@ Run these and report the actual output before calling the work done:
 - YAML parses: `python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" <file>` for every workflow/action touched
 - `actionlint` if installed (catches expression and shell errors YAML parsing can't)
 - Every `uses:` ref exists (step 4)
-- Read every `run:` body and confirm it contains no `${{ }}`. All such values must arrive through `env:`.
+- Read every `run:` body, in workflows and in `.github/actions/*/action.yml`, and confirm it contains no `${{ }}`, comments included. All such values must arrive through `env:`.
 - `diff` each vendored or verbatim file against its asset. Every difference must be a documented substitution.
+- Shell assets (`run-pr-checks.sh`, `detect-affected.sh`): `bash -n` and `shellcheck`, then run `detect-affected.sh` against a real base ref, and make one check fail on purpose to see the summary and a non-zero exit
+- Bake: `docker buildx bake -f docker-bake.hcl --print` resolves every app, and one app builds locally
 - Production: `preflight.sh` exits 0 against a realistic `.env` and exits 1 for each rule you added (test it with fixture files, never the real `.env`)
 - Where possible, a real run on a branch or PR (after confirmation), with the result reported
 
@@ -112,6 +114,8 @@ Load these only when the task needs them:
 | Build and push an image to GHCR (reusable workflow) | `assets/workflows/docker-build-push.yml` | `references/docker-build-push.md` |
 | Deploy a compose stack over SSH, pulling from a registry | `assets/actions/ssh-compose-deploy/action.yml` | `references/ssh-compose-deploy.md` |
 | Deploy by building on the target host (no registry) | `assets/workflows/deploy-develop-build-on-server.yml` + `assets/actions/git-sync-deploy/action.yml` | `references/build-on-server.md`, `references/git-sync-deploy.md` |
+| PR checks for an npm-workspaces monorepo in one job, posted as a PR comment | `assets/workflows/pr-checks.yml`, `assets/scripts/run-pr-checks.sh`, `assets/scripts/detect-affected.sh` | `references/pr-checks.md` |
+| Build several app images from one repo in one job (Docker Bake), and deploy only what a push changed | `assets/workflows/docker-bake-push.yml`, `assets/bake/docker-bake.hcl` (+ `detect-affected.sh`) | `references/docker-bake.md` |
 | Run a seed job on demand against a deployed environment | `assets/workflows/run-seed-develop.yml` | `references/run-seed.md` |
 | Production: web to S3 + CloudFront, servers to a Docker host over SSH (pnpm + Nx, or npm workspaces), plus manual migrate and seed | `assets/workflows/deploy-production-nx.yml` or `deploy-production.yml`, `migrate-production.yml`, `seed-production.yml` (with `docker-build-push.yml`) | `references/deploy-production.md` |
 

@@ -24,7 +24,7 @@ is necessary, not sufficient, because CI does not start the stack.
 $
 ```
 
-- [ ] `npm run lint`, `npm test` and `npm run build` pass locally, not only in CI
+- [ ] The project's lint, test and build commands pass locally, not only in CI
 - [ ] For an infra change: `docker compose config -q` parses, and
       `docker compose up -d --wait` brings every service to `healthy`
 - [ ] For a workflow change: YAML parses (`actionlint` if installed), and the

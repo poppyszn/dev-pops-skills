@@ -64,3 +64,5 @@ get excluded from this templates repo itself). The `!.env.example`
 negation line matters: it re-includes the example file after the
 broader `.env.*` exclusion, so the example still ships in the build
 context for documentation purposes.
+
+If the project keeps environment files in a folder (`env/.env`, `env/<service>.env`, a server checkout's secrets), add that folder too (`env/`). `.env` and `.env.*` match file names, not a folder's contents: without the line, `docker build` from a checkout that holds the secrets copies them into the build context, and `COPY . .` into the image.

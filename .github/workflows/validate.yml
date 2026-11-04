@@ -71,6 +71,10 @@ jobs:
       - name: Compose files render
         run: ./scripts/check-compose.sh
 
+      # actionlint does not read action.yml files; this covers them too.
+      - name: No expressions inside run bodies
+        run: ./scripts/check-run-expressions.sh
+
   lint:
     name: Workflow and shell lint
     runs-on: ubuntu-latest

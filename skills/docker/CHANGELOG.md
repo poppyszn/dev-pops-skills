@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0 - 2026-11-04
+
+- `references/node-api.md`: new "Variant: several app images from one repository": keep every stage before the app's bundle identical across Dockerfiles so images built together share their layers; skip Puppeteer's browser download in the install stage (`PUPPETEER_SKIP_DOWNLOAD`); install Chromium only in images that launch it, as a shared stage, with Debian's `/usr/bin/chromium` path. Each rule keeps the bug behind it.
+- `references/makefile.md`: a folder of environment files (`env/`) must be listed in `.dockerignore`; `.env` and `.env.*` don't match it.
+- Checked: the Puppeteer variables and the Debian Chromium path online (see `references/sources.md`).
+
 ## 1.4.1 - 2026-11-03
 
 - The `HEALTHCHECK` in `node-api`, `frontend-spa-nginx` and `frontend-nextjs` carries `# hadolint ignore=DL3025` with the reason: shell form is needed so `|| exit 1` turns wget's failure codes into 1, Docker's only "unhealthy" code. hadolint now blocks in this repo's CI.

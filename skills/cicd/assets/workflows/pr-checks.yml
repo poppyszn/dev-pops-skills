@@ -1,0 +1,106 @@
+name: "CI: PR checks"
+
+# One job checks every affected app, several at a time (scripts/run-pr-checks.sh),
+# and posts the result as one PR comment that is updated on every run. A matrix
+# needs a runner per app: on a small runner pool a full PR queues, and on hosted
+# runners every app bills its own setup minutes.
+
+on:
+  pull_request:
+    branches:
+      - <INTEGRATION_BRANCH>
+  workflow_dispatch:
+
+# A newer push to the same PR makes the running check obsolete.
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The diff needs the base branch's history.
+          fetch-depth: 0
+
+      # Same script a deploy or pre-push hook uses, so detection cannot drift.
+      - name: Detect affected apps
+        id: detect
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
+        run: |
+          apps=$(bash scripts/detect-affected.sh "origin/$BASE_REF")
+          apps=${apps//$'\n'/ }
+          echo "Affected apps: ${apps:-none}"
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v7
+        if: steps.detect.outputs.apps != ''
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.detect.outputs.apps != ''
+        run: npm ci
+
+      - name: Run checks
+        env:
+          AFFECTED_APPS: ${{ steps.detect.outputs.apps }}
+          CHECKS_PARALLEL: 2
+          CHECKS_SUMMARY: .checks/summary.md
+          # GITHUB_SHA on a pull request is a temporary merge commit; show the PR's head.
+          CHECKS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          read -ra apps <<< "$AFFECTED_APPS"
+          status=0
+          bash scripts/run-pr-checks.sh ${apps[@]+"${apps[@]}"} || status=$?
+          cat .checks/summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      # The checks alone decide pass or fail: a comment that cannot be posted
+      # (a fork's read-only token, an API blip) must not fail the job.
+      - name: Post summary on the PR
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        uses: actions/github-script@v9
+        env:
+          SUMMARY: .checks/summary.md
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- pr-checks-summary -->';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let summary;
+            try {
+              summary = fs.readFileSync(process.env.SUMMARY, 'utf8');
+            } catch {
+              summary = '## ❌ PR checks did not run\n\nThe job failed before the checks started (checkout or install).';
+            }
+            const body = `${marker}\n${summary}\n\n[Full logs](${runUrl})`;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(
+              (c) => c.user?.type === 'Bot' && c.body?.startsWith(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }

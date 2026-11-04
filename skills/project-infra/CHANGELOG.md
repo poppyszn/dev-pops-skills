@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.1.4 - 2026-11-04
+
+- **Fix: the PR template named npm commands.** Its checklist said "`npm run lint`, `npm test` and `npm run build` pass locally", which is wrong the moment it is copied into a pnpm or yarn project, and the skill says the template is copied verbatim with no substitutions. The line now says "the project's lint, test and build commands", so the template stays verbatim for any package manager.
+- Applied `contributions/completed/pr-template-hardcodes-npm-commands.merged.md`.
+
+## 3.1.3 - 2026-11-04
+
+- Re-copied the vendored `git-sync-deploy` and `ssh-compose-deploy` actions from cicd 3.2.1. The previous copies failed to load in any job (a `secrets` expression inside a comment).
+
+## 3.1.2 - 2026-11-04
+
+- Re-copied the vendored `.github/workflows/docker-build-push.yml` from the cicd skill (3.2.0), which no longer names a real repository and owner in a comment.
+
 ## 3.1.1 - 2026-11-03
 
 - The example's `apps/api`, `apps/admin` and `apps/web` `HEALTHCHECK` lines carry the same `# hadolint ignore=DL3025` and reason as the docker templates they were adapted from.
