@@ -1,0 +1,51 @@
+name: Terraform plan
+
+# Runs on pull requests that touch Terraform. Read-only: the role it assumes can
+# read AWS and take the state lock, nothing else.
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform-*.yml"
+
+permissions:
+  contents: read
+  id-token: write # request the OIDC token the AWS role trusts
+
+concurrency:
+  group: terraform-<ENVIRONMENT>
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/environments/<ENVIRONMENT>
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: <TERRAFORM_VERSION>
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: <PLAN_ROLE_ARN>
+          aws-region: <REGION>
+
+      - name: Format
+        run: terraform fmt -check -recursive ../..
+
+      - name: Init
+        run: terraform init -input=false -backend-config=backend.hcl
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        run: terraform plan -input=false -lock-timeout=5m -var-file=terraform.tfvars
