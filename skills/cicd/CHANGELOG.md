@@ -1,9 +1,15 @@
 # Changelog
 
+## 4.1.1 - 2026-11-05
+
+- **Reusable workflow naming convention:** Renamed reusable workflows in `assets/deploy-workflows/` to carry a leading underscore (`_deploy-pipeline.yml`, `_deploy-pipeline-bake.yml`, `_run-service.yml`) so they group cleanly in the file tree and indicate internal callers, and prefixed their display names with `Reusable: ` (`Reusable: Deploy pipeline`, `Reusable: Deploy pipeline (Bake)`, `Reusable: Run service`) for clear identification in the GitHub Actions UI. Caller entrypoints (`deploy.yml`, `migrate.yml`, `seed.yml`) call the underscored paths.
+- **Configurable build runner with ARM64 default:** Added an optional `runner` input to `_deploy-pipeline.yml` and `_deploy-pipeline-bake.yml` defaulting to `ubuntu-24.04-arm`. Accepts either a single runner label (`ubuntu-24.04-arm`, `ubuntu-latest`) or a JSON array string (`["ubuntu-24.04-arm", "ubuntu-latest"]`) to build on both architectures simultaneously via a dynamic matrix, with runner-scoped Buildx cache keys preventing cache collisions.
+- Updated `assets/scripts/check-deploy-conformance.sh` to expect `_deploy-pipeline.yml` (or `_deploy-pipeline-bake.yml`) and `_run-service.yml`, flag legacy non-underscored filenames as non-conforming, and verify callers reference the underscored paths.
+
 ## 4.1.0 - 2026-11-05
 
 - **Workflow naming convention default:** Standardized workflow names following `<Category>: <Action>` for CI workflows (`CI: PR checks`, `CI: Checks`, `CI: Build and push image`) and `<Environment>: <Action>` for environment-specific deploy and operational workflows (`Production: Deploy`, `Production: Migrate`, `Production: Seed`, `Develop: Seed`, `Develop: Deploy`). Unified multi-environment workflows (`deploy.yml`, `migrate.yml`, `seed.yml`) are named simply by action (`Deploy`, `Migrate`, `Seed`) because a single workflow serves multiple environments via inputs or branch triggers.
-- **Docker Bake deploy pipeline variant:** Added `assets/deploy-workflows/deploy-pipeline-bake.yml`, enabling multi-app / microservice repositories to build all images in a single BuildKit job with `docker-bake.hcl` while keeping the standard SSH compose deploy. Shared Dockerfile stages build once and generate identical layer blobs, so the host pulls shared layers only once.
+- **Docker Bake deploy pipeline variant:** Added `assets/deploy-workflows/_deploy-pipeline-bake.yml`, enabling multi-app / microservice repositories to build all images in a single BuildKit job with `docker-bake.hcl` while keeping the standard SSH compose deploy. Shared Dockerfile stages build once and generate identical layer blobs, so the host pulls shared layers only once.
 - **Manual migration workflows:** Clarified on-demand database migration workflows alongside seeds in the standard deploy pipeline (`assets/deploy-workflows/migrate.yml` and `seed.yml` over `run-service.yml` with single-file `environment` choice input). Updated trigger examples and references.
 - Updated `assets/scripts/check-deploy-conformance.sh` to recognize `deploy-pipeline-bake.yml`.
 - Updated templates across `assets/workflows/` and `project-infra` monorepo-layout workflows to adhere to the naming convention.

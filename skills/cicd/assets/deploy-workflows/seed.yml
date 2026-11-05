@@ -24,7 +24,7 @@ concurrency:
 jobs:
   seed:
     name: Seed
-    uses: ./.github/workflows/run-service.yml
+    uses: ./.github/workflows/_run-service.yml
     with:
       environment: ${{ inputs.environment }}
       service: seed
