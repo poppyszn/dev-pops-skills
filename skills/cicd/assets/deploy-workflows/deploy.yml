@@ -58,7 +58,7 @@ jobs:
   deploy:
     name: Deploy
     needs: verify
-    uses: ./.github/workflows/deploy-pipeline.yml
+    uses: ./.github/workflows/_deploy-pipeline.yml
     with:
       environment: ${{ github.ref_name }}
       apps: '<APPS_JSON>'

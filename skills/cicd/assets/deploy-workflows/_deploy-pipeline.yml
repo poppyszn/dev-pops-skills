@@ -1,22 +1,18 @@
-# Deploy pipeline with Docker Bake (reusable workflow). Copy to the project's
-# .github/workflows/deploy-pipeline-bake.yml unchanged, with the two vendored-copy
+# Deploy pipeline (reusable workflow). Copy to the project's
+# .github/workflows/_deploy-pipeline.yml unchanged, with the two vendored-copy
 # header lines, and call it from the project's own deploy.yml. Never hand-edit
 # the copy: change this file in the skill and re-copy it into every project
 # (references/deploy-pipeline.md), so every repository deploys the same way.
 #
-# Builds several app images from one repository in a single BuildKit job with
-# docker-bake.hcl, so shared Dockerfile stages (e.g. node_modules, base layers)
-# build once and produce identical layer blobs. The deploy host pulls them once.
-#
 # One shape for every project and every environment:
-#   build    all selected apps in one bake job, tagged with commit SHA and latest-<environment>
+#   build    one image per app, tagged with the commit SHA and latest-<environment>
 #   migrate  (optional) the compose `migrate` service on the host, before any restart
 #   deploy   sync the compose files, pull the SHA-tagged images, up --wait, clean up
 #
 # Develop and production run this same file; the GitHub Environment named by
 # `environment` holds the differences (host, keys, paths).
 
-name: Deploy pipeline (Bake)
+name: "Reusable: Deploy pipeline"
 
 on:
   workflow_call:
@@ -26,21 +22,25 @@ on:
         type: string
         required: true
       apps:
-        description: JSON list of apps, e.g. '["api","web"]'. Each is one Bake target and one compose service.
+        description: JSON list of apps, e.g. '["api","web"]'. Each is one image (ghcr.io/<owner>/<repo>-<app>) and one compose service.
         type: string
         required: true
-      bake-file:
-        description: Bake definition file.
+      dockerfile:
+        description: Dockerfile path; {app} is replaced with each app's name. A single-app repository uses "Dockerfile".
         type: string
-        default: docker-bake.hcl
+        default: apps/{app}/Dockerfile
       build-context:
         description: Docker build context.
         type: string
         default: .
-      max-parallelism:
-        description: BuildKit steps BuildKit runs at once. 2 suits a hosted runner (2 CPUs, 8 GB); raise it on a larger runner.
-        type: number
-        default: 2
+      build-target:
+        description: Dockerfile stage to build. Empty builds the last stage.
+        type: string
+        default: ""
+      runner:
+        description: Runner image for the build job (e.g. ubuntu-24.04-arm, ubuntu-latest, or JSON array of runners).
+        type: string
+        default: ubuntu-24.04-arm
       migrate:
         description: Run the compose `migrate` service on the host before the apps restart.
         type: boolean
@@ -61,22 +61,36 @@ permissions:
 
 jobs:
   build:
-    name: Build images (Bake)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    name: Build ${{ matrix.app }} (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        app: ${{ fromJson(inputs.apps) }}
+        runner: ${{ fromJson(startsWith(inputs.runner, '[') && inputs.runner || format('["{0}"]', inputs.runner || 'ubuntu-24.04-arm')) }}
     steps:
+      # The github context in a called workflow belongs to the caller, so this
+      # checks out the project being deployed.
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.commit-sha || github.sha }}
 
+      # GHCR paths must be lowercase; github.repository keeps the owner's case.
+      - name: Image name and Dockerfile
+        env:
+          REPO: ${{ github.repository }}
+          APP: ${{ matrix.app }}
+          DOCKERFILE_PATTERN: ${{ inputs.dockerfile }}
+        run: |
+          set -euo pipefail
+          echo "IMAGE=ghcr.io/${REPO,,}-${APP}" >> "$GITHUB_ENV"
+          echo "DOCKERFILE=${DOCKERFILE_PATTERN//\{app\}/$APP}" >> "$GITHUB_ENV"
+
       - uses: docker/setup-buildx-action@v4
-        with:
-          buildkitd-config-inline: |
-            [worker.oci]
-              max-parallelism = ${{ inputs.max-parallelism || 2 }}
 
       - uses: docker/login-action@v4
         with:
@@ -84,46 +98,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # GHCR paths must be lowercase; github.repository keeps the owner's case.
-      # Extract app names whether passed as a JSON array or a space-separated string.
-      - name: Resolve image name, commit and Bake targets
-        id: vars
-        env:
-          REPO: ${{ github.repository }}
-          REF: ${{ inputs.commit-sha || github.sha }}
-          APPS_INPUT: ${{ inputs.apps }}
-        run: |
-          set -euo pipefail
-          sha=$(git rev-parse "$REF")
-          if [[ "$APPS_INPUT" =~ ^\[.*\]$ ]]; then
-            targets=$(echo "$APPS_INPUT" | python3 -c 'import sys, json; print(",".join(json.load(sys.stdin)))')
-          else
-            read -ra app_list <<< "$APPS_INPUT"
-            targets=$(IFS=,; echo "${app_list[*]}")
-          fi
-          {
-            echo "image=ghcr.io/${REPO,,}"
-            echo "sha=$sha"
-            echo "targets=$targets"
-          } >> "$GITHUB_OUTPUT"
-
-      - uses: docker/bake-action@v7
+      # One cache scope per environment and app: a shared scope is overwritten
+      # by whichever image exports last.
+      - uses: docker/build-push-action@v7
         with:
-          source: ${{ inputs.build-context }}
-          files: ${{ inputs.bake-file }}
-          targets: ${{ steps.vars.outputs.targets }}
+          context: ${{ inputs.build-context }}
+          file: ${{ env.DOCKERFILE }}
+          target: ${{ inputs.build-target }}
           push: true
-          sbom: true
-          provenance: true
-          # *.pull re-resolves base image tags so security releases are picked up.
-          set: |
-            *.platform=linux/amd64
-            *.pull=true
-          vars: |
-            IMAGE=${{ steps.vars.outputs.image }}
-            TAG=latest-${{ inputs.environment }}
-            SHA=${{ steps.vars.outputs.sha }}
-            CACHE_SCOPE=${{ inputs.environment }}
+          tags: |
+            ${{ env.IMAGE }}:${{ inputs.commit-sha || github.sha }}
+            ${{ env.IMAGE }}:latest-${{ inputs.environment }}
+          cache-from: type=gha,scope=${{ inputs.environment }}-${{ matrix.app }}-${{ matrix.runner }}
+          cache-to: type=gha,scope=${{ inputs.environment }}-${{ matrix.app }}-${{ matrix.runner }},mode=max
 
   migrate:
     name: Migrate
@@ -157,21 +144,17 @@ jobs:
         env:
           HAS_SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY != '' }}
           HAS_SSH_USER: ${{ secrets.SSH_USER != '' }}
-          HAS_WORKING_DIR: ${{ secrets.WORKING_DIR != '' }}
-          HAS_SSH_HOST: ${{ secrets.SSH_HOST != '' }}
-          HAS_SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS != '' }}
         run: |
           set -euo pipefail
-          missing=()
-          [ "$HAS_SSH_PRIVATE_KEY" = "true" ] || missing+=("SSH_PRIVATE_KEY")
-          [ "$HAS_SSH_USER" = "true" ]        || missing+=("SSH_USER")
-          [ "$HAS_WORKING_DIR" = "true" ]     || missing+=("WORKING_DIR")
-          [ "$HAS_SSH_HOST" = "true" ]        || missing+=("SSH_HOST")
-          [ "$HAS_SSH_KNOWN_HOSTS" = "true" ] || missing+=("SSH_KNOWN_HOSTS")
-          if [ "${#missing[@]}" -gt 0 ]; then
-            echo "Missing required environment secrets for ${ENVIRONMENT}: ${missing[*]}" >&2
-            echo "An environment secret that the caller does not pass resolves to an empty string with no error." >&2
-            echo "Check that the caller passes 'secrets: inherit' and the environment '${ENVIRONMENT}' has these secrets set." >&2
+          missing=""
+          [ -n "$SSH_HOST" ] || missing="$missing SSH_HOST"
+          [ "$HAS_SSH_USER" = true ] || missing="$missing SSH_USER"
+          [ "$HAS_SSH_PRIVATE_KEY" = true ] || missing="$missing SSH_PRIVATE_KEY"
+          [ -n "$SSH_KNOWN_HOSTS" ] || missing="$missing SSH_KNOWN_HOSTS"
+          [ -n "$WORKING_DIR" ] || missing="$missing WORKING_DIR"
+          if [ -n "$missing" ]; then
+            echo "Missing in the '$ENVIRONMENT' environment (or not passed by the caller):$missing" >&2
+            echo "The caller's job needs 'secrets: inherit'." >&2
             exit 1
           fi
 
@@ -179,6 +162,8 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
+      # Host keys are pinned: SSH_KNOWN_HOSTS holds `ssh-keyscan -p <port> <host>`
+      # output (and the bastion's, if one is used), and checking is strict.
       - name: Configure SSH
         run: |
           set -euo pipefail
@@ -194,7 +179,9 @@ jobs:
           } >> ~/.ssh/config
           chmod 600 ~/.ssh/config
 
-      # Sync the host repository to the exact commit being deployed.
+      # init + fetch, not clone: a clone refuses a directory that already holds
+      # files (the host's .env). The token is passed for this one command and
+      # never written to .git/config.
       - name: Sync repository to the deployed commit
         run: |
           set -euo pipefail
@@ -215,6 +202,8 @@ jobs:
           AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
           git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" fetch --depth 1 origin "$DEPLOY_SHA"
           git reset --hard FETCH_HEAD
+          # git clean removes untracked files that are not ignored, which would
+          # include the host's .env.
           if ! git check-ignore -q "${COMPOSE_DIR}/.env"; then
             echo "${COMPOSE_DIR}/.env must be listed in .gitignore: git clean would delete it." >&2
             exit 1
@@ -222,6 +211,9 @@ jobs:
           git clean -fd
           EOF
 
+      # Migrations run while the old apps still serve traffic, so they must stay
+      # compatible with them (add first, remove later). A failure stops the
+      # pipeline here, before any app restarts.
       - name: Run migrations
         run: |
           set -euo pipefail
@@ -261,7 +253,7 @@ jobs:
       ENVIRONMENT: ${{ inputs.environment }}
       COMPOSE_DIR: ${{ inputs.compose-dir || format('docker/{0}', inputs.environment) }}
       DEPLOY_SHA: ${{ inputs.commit-sha || github.sha }}
-      APPS_INPUT: ${{ inputs.apps }}
+      DEPLOY_APPS: ${{ join(fromJson(inputs.apps), ' ') }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_ACTOR: ${{ github.actor }}
       REPO: ${{ github.repository }}
@@ -272,27 +264,24 @@ jobs:
       SSH_JUMP_HOST: ${{ secrets.SSH_JUMP_HOST }}
       SSH_USER_JUMP: ${{ secrets.SSH_USER_JUMP }}
       SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # Optional environment variable: a URL that must answer 2xx after the deploy.
       HEALTH_URL: ${{ vars.HEALTH_URL }}
     steps:
       - name: Check required secrets
         env:
           HAS_SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY != '' }}
           HAS_SSH_USER: ${{ secrets.SSH_USER != '' }}
-          HAS_WORKING_DIR: ${{ secrets.WORKING_DIR != '' }}
-          HAS_SSH_HOST: ${{ secrets.SSH_HOST != '' }}
-          HAS_SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS != '' }}
         run: |
           set -euo pipefail
-          missing=()
-          [ "$HAS_SSH_PRIVATE_KEY" = "true" ] || missing+=("SSH_PRIVATE_KEY")
-          [ "$HAS_SSH_USER" = "true" ]        || missing+=("SSH_USER")
-          [ "$HAS_WORKING_DIR" = "true" ]     || missing+=("WORKING_DIR")
-          [ "$HAS_SSH_HOST" = "true" ]        || missing+=("SSH_HOST")
-          [ "$HAS_SSH_KNOWN_HOSTS" = "true" ] || missing+=("SSH_KNOWN_HOSTS")
-          if [ "${#missing[@]}" -gt 0 ]; then
-            echo "Missing required environment secrets for ${ENVIRONMENT}: ${missing[*]}" >&2
-            echo "An environment secret that the caller does not pass resolves to an empty string with no error." >&2
-            echo "Check that the caller passes 'secrets: inherit' and the environment '${ENVIRONMENT}' has these secrets set." >&2
+          missing=""
+          [ -n "$SSH_HOST" ] || missing="$missing SSH_HOST"
+          [ "$HAS_SSH_USER" = true ] || missing="$missing SSH_USER"
+          [ "$HAS_SSH_PRIVATE_KEY" = true ] || missing="$missing SSH_PRIVATE_KEY"
+          [ -n "$SSH_KNOWN_HOSTS" ] || missing="$missing SSH_KNOWN_HOSTS"
+          [ -n "$WORKING_DIR" ] || missing="$missing WORKING_DIR"
+          if [ -n "$missing" ]; then
+            echo "Missing in the '$ENVIRONMENT' environment (or not passed by the caller):$missing" >&2
+            echo "The caller's job needs 'secrets: inherit'." >&2
             exit 1
           fi
 
@@ -315,6 +304,8 @@ jobs:
           } >> ~/.ssh/config
           chmod 600 ~/.ssh/config
 
+      # Same sync as the migrate job; running it again is harmless and keeps
+      # this job correct when the project does not migrate.
       - name: Sync repository to the deployed commit
         run: |
           set -euo pipefail
@@ -345,11 +336,6 @@ jobs:
       - name: Pull images and start containers
         run: |
           set -euo pipefail
-          if [[ "$APPS_INPUT" =~ ^\[.*\]$ ]]; then
-            DEPLOY_APPS=$(echo "$APPS_INPUT" | python3 -c 'import sys, json; print(" ".join(json.load(sys.stdin)))')
-          else
-            DEPLOY_APPS="$APPS_INPUT"
-          fi
           ssh -p "$SSH_PORT" "$SSH_TARGET" \
             GH_TOKEN="$(printf '%q' "$GH_TOKEN")" \
             GH_ACTOR="$(printf '%q' "$GH_ACTOR")" \
@@ -366,6 +352,7 @@ jobs:
           export IMAGE_TAG="$DEPLOY_SHA"
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
           trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          # A project may keep a preflight check of the host .env next to its compose file.
           if [ -f preflight.sh ]; then
             bash ./preflight.sh "$DEPLOY_APPS"
           fi

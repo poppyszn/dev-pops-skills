@@ -1,14 +1,14 @@
 # One-off run of a compose service on an environment's host (reusable
 # workflow): seeds, migrations on request, any task the compose file defines
-# as a service. Copy to the project's .github/workflows/run-service.yml
+# as a service. Copy to the project's .github/workflows/_run-service.yml
 # unchanged, with the two vendored-copy header lines; the project's seed.yml
 # and migrate.yml call it. See references/deploy-pipeline.md.
 #
 # It runs against the build the last successful deploy put live (recorded on
-# the host by deploy-pipeline.yml), so a seed never runs a newer image than the
+# the host by _deploy-pipeline.yml), so a seed never runs a newer image than the
 # one serving traffic, and it refuses to run before the first deploy.
 
-name: Run service
+name: "Reusable: Run service"
 
 on:
   workflow_call:

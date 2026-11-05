@@ -22,12 +22,12 @@ echo "Deploy pipeline conformance: $(basename "$(pwd)")"
 
 # 1. The two pipeline files are verbatim copies: two header lines, then the
 #    skill's file unchanged. A hand edit shows up here, as does an old version.
-pipeline_file="deploy-pipeline.yml"
-if [ -f "$wf/deploy-pipeline-bake.yml" ] && [ ! -f "$wf/deploy-pipeline.yml" ]; then
-  pipeline_file="deploy-pipeline-bake.yml"
+pipeline_file="_deploy-pipeline.yml"
+if [ -f "$wf/_deploy-pipeline-bake.yml" ] && [ ! -f "$wf/_deploy-pipeline.yml" ]; then
+  pipeline_file="_deploy-pipeline-bake.yml"
 fi
 
-for f in "$pipeline_file" run-service.yml; do
+for f in "$pipeline_file" _run-service.yml; do
   if [ ! -f "$wf/$f" ]; then
     say "$wf/$f is missing (copy it from the skill's assets/deploy-workflows/ with the two vendored-copy header lines)"
   else
@@ -42,16 +42,16 @@ done
 if [ ! -f "$wf/deploy.yml" ]; then
   say "$wf/deploy.yml is missing (copy the skill's deploy.yml and fill its markers)"
 else
-  grep -qE 'uses: \./\.github/workflows/deploy-pipeline(-bake)?\.yml' "$wf/deploy.yml" \
-    || say "$wf/deploy.yml does not call ./.github/workflows/deploy-pipeline.yml (or deploy-pipeline-bake.yml)"
+  grep -qE 'uses: \./\.github/workflows/_deploy-pipeline(-bake)?\.yml' "$wf/deploy.yml" \
+    || say "$wf/deploy.yml does not call ./.github/workflows/_deploy-pipeline.yml (or _deploy-pipeline-bake.yml)"
   grep -qE '^ *secrets: inherit' "$wf/deploy.yml" \
     || say "$wf/deploy.yml does not pass 'secrets: inherit' (environment secrets would arrive empty)"
   grep -qE '^ *verify:' "$wf/deploy.yml" \
     || say "$wf/deploy.yml has no 'verify' job before the deploy"
 fi
 for f in seed migrate; do
-  if [ -f "$wf/$f.yml" ] && ! grep -qE 'uses: \./\.github/workflows/run-service\.yml' "$wf/$f.yml"; then
-    say "$wf/$f.yml does not call ./.github/workflows/run-service.yml"
+  if [ -f "$wf/$f.yml" ] && ! grep -qE 'uses: \./\.github/workflows/_run-service\.yml' "$wf/$f.yml"; then
+    say "$wf/$f.yml does not call ./.github/workflows/_run-service.yml"
   fi
 done
 
@@ -59,8 +59,8 @@ done
 for f in "$wf"/*.yml "$wf"/*.yaml; do
   [ -e "$f" ] || continue
   case "$(basename "$f")" in
-    deploy.yml|deploy-pipeline.yml|deploy-pipeline-bake.yml|run-service.yml|seed.yml|migrate.yml) ;;
-    deploy-*|*-deploy*|run-seed*|seed-*|run-migrat*|migrate-*|docker-build-push*)
+    deploy.yml|_deploy-pipeline.yml|_deploy-pipeline-bake.yml|_run-service.yml|seed.yml|migrate.yml) ;;
+    deploy-*|*-deploy*|run-seed*|seed-*|run-migrat*|migrate-*|docker-build-push*|deploy-pipeline*|run-service*)
       say "$f is a legacy pipeline file; deploy.yml, seed.yml and migrate.yml replace it" ;;
   esac
 done
