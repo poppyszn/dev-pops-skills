@@ -60,7 +60,7 @@ for f in "$wf"/*.yml "$wf"/*.yaml; do
   [ -e "$f" ] || continue
   case "$(basename "$f")" in
     deploy.yml|_deploy-pipeline.yml|_deploy-pipeline-bake.yml|_run-service.yml|seed.yml|migrate.yml) ;;
-    deploy-*|*-deploy*|run-seed*|seed-*|run-migrat*|migrate-*|docker-build-push*|deploy-pipeline*|run-service*)
+    deploy-*|*-deploy*|run-seed*|seed-*|run-migrat*|migrate-*|docker-build-push*|run-service*)
       say "$f is a legacy pipeline file; deploy.yml, seed.yml and migrate.yml replace it" ;;
   esac
 done
